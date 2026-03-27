@@ -1,75 +1,139 @@
-import { useMemo } from 'react'
-import { formatSlotKeyLabel } from '../domain/schedule'
+import { addDays, addWeeks, differenceInCalendarDays, format, startOfWeek } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { allSlotLabels, mergeSixtyMinuteSlotPairsForTeacher, slotKey } from '../domain/schedule'
+import { ScheduleGrid, ScheduleLegend } from '../components/ScheduleGrid'
 import { useSchool } from '../state/SchoolContext'
-import { FormActions } from '../components/FormActions'
 
 export function Calendario() {
   const { state } = useSchool()
+  const [teacherId, setTeacherId] = useState(() => state.teachers[0]?.id ?? '')
+  const [weekOffset, setWeekOffset] = useState(0)
+  const weekStart = useMemo(
+    () => addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), weekOffset),
+    [weekOffset],
+  )
+  const weekEnd = useMemo(() => addDays(weekStart, 5), [weekStart])
 
-  const rows = useMemo(() => {
-    const out: {
-      teacher: string
-      student: string
-      slot: string
-      course?: string
-    }[] = []
-    for (const t of state.teachers) {
-      for (const [key, cell] of Object.entries(t.schedule)) {
-        if (cell.status !== 'busy') continue
-        const st = state.students.find((s) => s.id === cell.studentId)
-        const courseId = st?.enrollment?.courseId
-        const course = courseId ? state.courses.find((c) => c.id === courseId) : undefined
-        out.push({
-          teacher: t.nome,
-          student: cell.studentName,
-          slot: formatSlotKeyLabel(key),
-          course: course ? `${course.instrumentLabel} ${course.stage}º` : undefined,
-        })
+  const teacher = state.teachers.find((t) => t.id === teacherId)
+
+  const mergeSlotKeys = useMemo(
+    () => (teacherId ? mergeSixtyMinuteSlotPairsForTeacher(state.students, teacherId) : []),
+    [state.students, teacherId],
+  )
+
+  const transientByKey = useMemo(() => {
+    if (!teacherId) return {} as Record<string, { studentName: string; replacement?: boolean }>
+    const labels = allSlotLabels()
+    const out: Record<string, { studentName: string; replacement?: boolean }> = {}
+    for (const r of state.replacementClasses) {
+      if (r.teacherId !== teacherId) continue
+      const d = new Date(r.date + 'T12:00:00')
+      const delta = differenceInCalendarDays(d, weekStart)
+      if (delta < 0 || delta > 5) continue
+      const dayIndex = delta
+      const start = labels.indexOf(r.startTime)
+      if (start < 0) continue
+      out[slotKey(dayIndex, start)] = {
+        studentName: r.studentNome,
+        replacement: true,
+      }
+      if (r.duration === 60) {
+        out[slotKey(dayIndex, start + 1)] = {
+          studentName: '',
+          replacement: true,
+        }
       }
     }
-    return out.sort((a, b) => a.slot.localeCompare(b.slot, 'pt-BR'))
-  }, [state.teachers, state.students, state.courses])
+    return out
+  }, [state.replacementClasses, teacherId, weekStart])
+
+  const schedule = teacher?.schedule ?? {}
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Calendário</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Visão consolidada dos horários ocupados (dados integrados professores + alunos).
+          Grade semanal por professor (mesmo padrão visual da matrícula). Verde: livre · Vermelho:
+          indisponível · Ocupado: nome do aluno e instrumento. Reposição aparece em violeta com
+          etiqueta.
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-[720px] w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-3 py-3">Horário</th>
-              <th className="px-3 py-3">Professor</th>
-              <th className="px-3 py-3">Aluno</th>
-              <th className="px-3 py-3">Curso</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-3 py-8 text-center text-slate-500">
-                  Nenhum horário ocupado.
-                </td>
-              </tr>
-            )}
-            {rows.map((r, i) => (
-              <tr key={`${r.teacher}-${r.slot}-${i}`} className="hover:bg-slate-50/80">
-                <td className="px-3 py-3 font-medium text-slate-900">{r.slot}</td>
-                <td className="px-3 py-3 text-slate-600">{r.teacher}</td>
-                <td className="px-3 py-3 text-slate-600">{r.student}</td>
-                <td className="px-3 py-3 text-slate-600">{r.course ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium text-slate-700">
+            Professor
+            <select
+              className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              value={teacherId}
+              onChange={(e) => setTeacherId(e.target.value)}
+            >
+              {state.teachers.length === 0 && <option value="">Nenhum professor cadastrado</option>}
+              {state.teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="text-sm text-slate-700">
+            <p className="font-medium">Semana exibida</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                onClick={() => setWeekOffset((w) => w - 1)}
+              >
+                ←
+              </button>
+              <span className="text-xs sm:text-sm">
+                {format(weekStart, "d 'de' MMM", { locale: ptBR })} —{' '}
+                {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
+              </span>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                onClick={() => setWeekOffset((w) => w + 1)}
+              >
+                →
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                onClick={() => setWeekOffset(0)}
+              >
+                Esta semana
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <FormActions onCancel={() => undefined} onSave={() => undefined} />
+      {teacher ? (
+        <div className="space-y-3">
+          <ScheduleLegend />
+          <ScheduleGrid
+            mode="edit"
+            schedule={schedule}
+            mergeSlotKeys={mergeSlotKeys}
+            transientByKey={transientByKey}
+          />
+          <p className="text-xs text-slate-500">
+            Visualização somente leitura. Para alterar disponibilidade ou ocupação, use o cadastro do
+            professor ou a matrícula. Para aulas avulsas de reposição (sem cobrança, apenas na data
+            marcada), use{' '}
+            <Link to="/alunos" className="font-medium text-emerald-800 underline hover:text-emerald-950">
+              Alunos → Agendar reposição
+            </Link>
+            .
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-600">Cadastre um professor para ver a grade.</p>
+      )}
     </div>
   )
 }

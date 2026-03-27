@@ -24,3 +24,27 @@ export function daysLateFromPaymentDate(paymentDate: Date, referenceMonth: Date)
   const ms = pay.getTime() - due.getTime()
   return Math.ceil(ms / (24 * 60 * 60 * 1000))
 }
+
+function atMidday(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/** Dias corridos após o vencimento (dia seguinte ao vencimento = 1). */
+export function daysLateAfterDueDate(paymentDate: Date, dueDate: Date) {
+  const pay = atMidday(paymentDate)
+  const due = atMidday(dueDate)
+  if (pay <= due) return 0
+  const ms = pay.getTime() - due.getTime()
+  return Math.ceil(ms / (24 * 60 * 60 * 1000))
+}
+
+/** Multa 2% + juros 0,3% ao dia sobre o valor bruto (regra painel do aluno em atraso). */
+export function lateFeesOnGross(gross: number, daysLate: number) {
+  if (daysLate <= 0) {
+    return { fine: 0, interest: 0, total: gross }
+  }
+  const fine = gross * 0.02
+  const interest = gross * 0.003 * daysLate
+  return { fine, interest, total: gross + fine + interest }
+}
+

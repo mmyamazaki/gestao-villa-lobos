@@ -2,11 +2,21 @@ import { useMemo, useState } from 'react'
 import type { Course } from '../domain/types'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { calcAgeYears } from '../domain/age'
-import { createEmptySchedule } from '../domain/schedule'
-import type { ScheduleMap, SlotState, Teacher } from '../domain/types'
+import { createEmptySchedule, mergeSixtyMinuteSlotPairsForTeacher } from '../domain/schedule'
+import type { ScheduleMap, SlotState, Student, Teacher } from '../domain/types'
 import { FormActions } from '../components/FormActions'
 import { ScheduleGrid, ScheduleLegend } from '../components/ScheduleGrid'
 import { useSchool } from '../state/SchoolContext'
+import {
+  formatCpfBR,
+  formatPhoneMobileBR,
+  formatRgNumericBR,
+  isCpfComplete,
+  isMobileComplete,
+  isPhoneBrComplete,
+  isRgNumericComplete,
+  onlyDigits,
+} from '../utils/brMasks'
 import { ensureSchedule } from '../state/schoolUtils'
 
 function cloneTeacher(t: Teacher): Teacher {
@@ -28,6 +38,10 @@ function emptyTeacher(id: string): Teacher {
     cpf: '',
     endereco: '',
     contatos: '',
+    email: '',
+    celular: '',
+    login: '',
+    senha: '',
     instrumentSlugs: [],
     schedule: ensureSchedule(createEmptySchedule() as ScheduleMap),
   }
@@ -37,9 +51,11 @@ export function ProfessorForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { state, saveTeacher } = useSchool()
+  const students = state.students
   const [novoId] = useState(() => crypto.randomUUID())
 
   const baseline = useMemo((): Teacher | null => {
+    if (id == null || id === '') return null
     if (id === 'novo') return emptyTeacher(novoId)
     return state.teachers.find((t) => t.id === id) ?? null
   }, [id, novoId, state.teachers])
@@ -55,6 +71,8 @@ export function ProfessorForm() {
       onDone={() => navigate('/professores')}
       saveTeacher={saveTeacher}
       courses={state.courses}
+      allTeachers={state.teachers}
+      students={students}
     />
   )
 }
@@ -66,6 +84,8 @@ function ProfessorFormInner({
   onDone,
   saveTeacher,
   courses,
+  allTeachers,
+  students,
 }: {
   mode: 'novo' | 'edit'
   baseline: Teacher
@@ -73,8 +93,26 @@ function ProfessorFormInner({
   onDone: () => void
   saveTeacher: (t: Teacher) => void
   courses: Course[]
+  allTeachers: Teacher[]
+  students: Student[]
 }) {
   const [draft, setDraft] = useState(() => cloneTeacher(baseline))
+  const [isSaving, setIsSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const fieldClass = (name: string) =>
+    [
+      'mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2',
+      fieldErrors[name]
+        ? 'border-red-400 bg-red-50/30'
+        : 'border-slate-200',
+    ].join(' ')
+
+  const mergeSlotKeys = useMemo(
+    () => mergeSixtyMinuteSlotPairsForTeacher(students, draft.id),
+    [students, draft.id],
+  )
 
   const instrumentOptions = useMemo(() => {
     const map = new Map<string, string>()
@@ -122,12 +160,19 @@ function ProfessorFormInner({
 
   return (
     <div className="space-y-8">
+      {formError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {formError}
+        </div>
+      )}
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
           {mode === 'novo' ? 'Novo professor' : 'Editar professor'}
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Segunda a sábado, 08h–12h e 14h–20h em blocos de 30 minutos.
+          Marque os <strong>instrumentos</strong> (vinculados aos cursos cadastrados), defina a{' '}
+          <strong>grade de horários</strong> e salve. Na matrícula, só aparecem professores compatíveis com o
+          curso escolhido.
         </p>
       </div>
 
@@ -137,10 +182,11 @@ function ProfessorFormInner({
           <label className="text-sm font-medium text-slate-700">
             Nome completo
             <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              className={fieldClass('nome')}
               value={draft.nome}
               onChange={(e) => setDraft((d) => ({ ...d, nome: e.target.value }))}
             />
+            {fieldErrors.nome && <span className="mt-1 block text-xs text-red-700">{fieldErrors.nome}</span>}
           </label>
           <label className="text-sm font-medium text-slate-700">
             Nascimento
@@ -173,18 +219,20 @@ function ProfessorFormInner({
           <label className="text-sm font-medium text-slate-700">
             RG
             <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              className={fieldClass('rg')}
               value={draft.rg}
-              onChange={(e) => setDraft((d) => ({ ...d, rg: e.target.value }))}
+              onChange={(e) => setDraft((d) => ({ ...d, rg: formatRgNumericBR(e.target.value) }))}
             />
+            {fieldErrors.rg && <span className="mt-1 block text-xs text-red-700">{fieldErrors.rg}</span>}
           </label>
           <label className="text-sm font-medium text-slate-700">
             CPF
             <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              className={fieldClass('cpf')}
               value={draft.cpf}
-              onChange={(e) => setDraft((d) => ({ ...d, cpf: e.target.value }))}
+              onChange={(e) => setDraft((d) => ({ ...d, cpf: formatCpfBR(e.target.value) }))}
             />
+            {fieldErrors.cpf && <span className="mt-1 block text-xs text-red-700">{fieldErrors.cpf}</span>}
           </label>
           <label className="text-sm font-medium text-slate-700 md:col-span-2">
             Endereço completo
@@ -195,12 +243,68 @@ function ProfessorFormInner({
             />
           </label>
           <label className="text-sm font-medium text-slate-700 md:col-span-2">
-            Contatos
+            Contatos (texto livre; se incluir telefone fixo/celular, número completo com DDD)
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
               value={draft.contatos}
               onChange={(e) => setDraft((d) => ({ ...d, contatos: e.target.value }))}
             />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            E-mail
+            <input
+              type="email"
+              autoComplete="email"
+              className={fieldClass('email')}
+              value={draft.email}
+              onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+            />
+            {fieldErrors.email && <span className="mt-1 block text-xs text-red-700">{fieldErrors.email}</span>}
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Celular
+            <input
+              type="tel"
+              autoComplete="tel"
+              className={fieldClass('celular')}
+              value={draft.celular}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, celular: formatPhoneMobileBR(e.target.value) }))
+              }
+            />
+            {fieldErrors.celular && (
+              <span className="mt-1 block text-xs text-red-700">{fieldErrors.celular}</span>
+            )}
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">Acesso ao portal do professor</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Login e senha usados na tela de entrada do professor (únicos por docente).
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="text-sm font-medium text-slate-700">
+            Login
+            <input
+              autoComplete="username"
+              className={fieldClass('login')}
+              value={draft.login}
+              onChange={(e) => setDraft((d) => ({ ...d, login: e.target.value }))}
+            />
+            {fieldErrors.login && <span className="mt-1 block text-xs text-red-700">{fieldErrors.login}</span>}
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Senha
+            <input
+              type="password"
+              autoComplete={mode === 'novo' ? 'new-password' : 'current-password'}
+              className={fieldClass('senha')}
+              value={draft.senha}
+              onChange={(e) => setDraft((d) => ({ ...d, senha: e.target.value }))}
+            />
+            {fieldErrors.senha && <span className="mt-1 block text-xs text-red-700">{fieldErrors.senha}</span>}
           </label>
         </div>
       </section>
@@ -245,6 +349,7 @@ function ProfessorFormInner({
         <ScheduleGrid
           mode="edit"
           schedule={draft.schedule}
+          mergeSlotKeys={mergeSlotKeys}
           onToggle={(key, cell) => onScheduleToggle(key, cell)}
         />
       </section>
@@ -254,15 +359,70 @@ function ProfessorFormInner({
         saveLabel="Salvar"
         onCancel={() => {
           setDraft(cloneTeacher(baseline))
+          setFieldErrors({})
+          setFormError(null)
           onCancelNavigate()
         }}
-        onSave={() => {
+        isSaving={isSaving}
+        onSave={async () => {
+          const nextFieldErrors: Record<string, string> = {}
+          setFormError(null)
           if (draft.instrumentSlugs.length === 0) {
-            window.alert('Selecione ao menos um instrumento que o professor leciona.')
+            nextFieldErrors.instrumentSlugs = 'Selecione ao menos um instrumento.'
+          }
+          if (!draft.nome.trim()) nextFieldErrors.nome = 'Informe o nome completo.'
+          if (!isCpfComplete(draft.cpf)) nextFieldErrors.cpf = 'CPF incompleto (11 dígitos).'
+          if (draft.rg.trim() && !isRgNumericComplete(draft.rg)) {
+            nextFieldErrors.rg = 'RG inválido: informe de 6 a 9 dígitos ou deixe em branco.'
+          }
+          if (!draft.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) {
+            nextFieldErrors.email = 'Informe um e-mail válido.'
+          }
+          if (!isMobileComplete(draft.celular)) {
+            nextFieldErrors.celular = 'Celular incompleto (DDD + 9 dígitos).'
+          }
+          const contDigits = onlyDigits(draft.contatos)
+          if (contDigits.length > 0 && !isPhoneBrComplete(draft.contatos)) {
+            nextFieldErrors.contatos = 'Telefone em contatos precisa estar completo.'
+          }
+          if (!draft.login.trim()) nextFieldErrors.login = 'Informe o login.'
+          if (!draft.senha) nextFieldErrors.senha = 'Informe a senha.'
+          const lu = draft.login.trim().toLowerCase()
+          const dupLogin = allTeachers.some(
+            (t) => t.id !== draft.id && t.login.trim().toLowerCase() === lu,
+          )
+          if (dupLogin) {
+            nextFieldErrors.login = 'Este login já está em uso.'
+          }
+
+          setFieldErrors(nextFieldErrors)
+          if (Object.keys(nextFieldErrors).length > 0) {
+            const msg =
+              'Formulário inválido. Revise os campos destacados em vermelho antes de salvar.'
+            setFormError(msg)
+            window.alert(msg)
             return
           }
-          saveTeacher(draft)
-          onDone()
+
+          try {
+            setIsSaving(true)
+            await Promise.resolve(
+              saveTeacher({
+                ...draft,
+                login: draft.login.trim(),
+                email: draft.email.trim(),
+                celular: draft.celular.trim(),
+              }),
+            )
+            setFieldErrors({})
+            onDone()
+          } catch {
+            const msg = 'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios.'
+            setFormError(msg)
+            window.alert(msg)
+          } finally {
+            setIsSaving(false)
+          }
         }}
       />
     </div>
