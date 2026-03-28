@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { SchoolState } from '../domain/types'
+import { getPrimaryAdminEmailLower, getPrimaryAdminPasswordFromEnv } from '../lib/adminEnv'
+import { verifyAdminCredentials } from '../services/adminsSupabase'
 
 export type AuthRole = 'admin' | 'teacher' | 'student'
 
@@ -35,17 +37,13 @@ function saveSession(s: Session | null) {
 
 type AuthContextValue = {
   session: Session | null
-  loginAdmin: (email: string, senha: string) => boolean
+  loginAdmin: (email: string, senha: string) => Promise<boolean>
   loginTeacher: (login: string, senha: string, state: SchoolState) => boolean
   loginStudent: (login: string, senha: string, state: SchoolState) => boolean
   logout: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-/** Credenciais da secretaria: defina no `.env` (`VITE_ADMIN_EMAIL` / `VITE_ADMIN_PASSWORD`). */
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL ?? 'secretaria@escola.br').trim()
-const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD ?? 'admin123'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => loadSession())
@@ -54,11 +52,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession(session)
   }, [session])
 
-  const loginAdmin = useCallback((email: string, senha: string) => {
-    const ok =
-      email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() && senha === ADMIN_PASS
-    if (ok) setSession({ role: 'admin' })
-    return ok
+  const loginAdmin = useCallback(async (email: string, senha: string) => {
+    const em = email.trim().toLowerCase()
+    if (em === getPrimaryAdminEmailLower() && senha === getPrimaryAdminPasswordFromEnv()) {
+      setSession({ role: 'admin' })
+      return true
+    }
+    if (await verifyAdminCredentials(email, senha)) {
+      setSession({ role: 'admin' })
+      return true
+    }
+    return false
   }, [])
 
   const loginTeacher = useCallback((login: string, senha: string, state: SchoolState) => {

@@ -21,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/state/SchoolContext.tsx'],
+    files: ['src/state/SchoolContext.tsx', 'src/auth/AuthContext.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 ])

@@ -4,17 +4,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { normalizeBirthToIso } from '../domain/age'
-import { buildDefaultCourses } from '../domain/coursesCatalog'
 import { buildTwelveMensalidades } from '../domain/installments'
 import {
   allSlotLabels,
   canStart60MinuteLesson,
   canonicalLessonLogSlotKey,
-  createEmptySchedule,
   slotKey,
   sixtyMinutePairKeys,
   sortSlotKeys,
@@ -33,17 +32,31 @@ import type {
   Teacher,
 } from '../domain/types'
 import type { ScheduleMap } from '../domain/types'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout'
 import { ensureSchedule } from './schoolUtils'
 
-const STORAGE_KEY = 'emvl-musica-villa-lobos-v1'
+/** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
+function coursesPayloadForPut(courses: Course[]): Course[] {
+  return courses.map((c) => ({
+    id: c.id,
+    instrument: c.instrument,
+    instrumentLabel: (c.instrumentLabel ?? '').trim() || 'Curso',
+    levelLabel: (c.levelLabel ?? '').trim() || 'Nível',
+    monthlyPrice:
+      typeof c.monthlyPrice === 'number' && !Number.isNaN(c.monthlyPrice) ? c.monthlyPrice : 0,
+  }))
+}
+
+/** Apenas dados secundários (parcelas, logs, etc.). Cursos/professores/alunos vêm da API + Prisma. */
+const STORAGE_KEY_LEGACY = 'emvl-musica-villa-lobos-v1'
+const STORAGE_KEY_SECONDARY = 'emvl-musica-villa-lobos-secondary-v2'
 
 function uniqueInstrumentSlugs(courses: Course[]) {
   return [...new Set(courses.map((c) => c.instrument))]
 }
 
 function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
-  let courses = raw?.courses?.length ? raw!.courses : buildDefaultCourses()
-  courses = courses.map((c) => ({ ...c }))
+  const courses = (raw?.courses?.length ? raw!.courses : []).map((c) => ({ ...c }))
   const fallbackSlugs = uniqueInstrumentSlugs(courses)
   const teachers = (raw?.teachers ?? []).map((t) => ({
     ...t,
@@ -155,48 +168,32 @@ function normalizeLessonLogs(students: Student[], logs: ClassSessionLog[]): Clas
   return [...byComposite.values()]
 }
 
-function seedTeachers(): Teacher[] {
-  const slugs = uniqueInstrumentSlugs(buildDefaultCourses())
-  const mk = (
-    nome: string,
-    id: string,
-    login: string,
-    email: string,
-  ): Teacher => ({
-    id,
-    nome,
-    dataNascimento: '1985-06-15',
-    naturalidade: 'Porto Velho - RO',
-    filiacao: '—',
-    rg: '',
-    cpf: '',
-    endereco: 'Porto Velho, RO',
-    contatos: '(69) 90000-0000',
-    email,
-    celular: '(69) 90000-0000',
-    login,
-    senha: 'prof123',
-    instrumentSlugs: [...slugs],
-    schedule: ensureSchedule(createEmptySchedule() as ScheduleMap),
-  })
-  return [
-    mk('Helena Prado', 'teacher-1', 'helena.prado', 'helena.prado@emvl.local'),
-    mk('Ricardo Mendes', 'teacher-2', 'ricardo.mendes', 'ricardo.mendes@emvl.local'),
-  ]
-}
-
-function loadRaw(): Partial<SchoolState> | null {
+function loadSecondaryPartial(): Partial<SchoolState> | null {
   try {
-    const s = localStorage.getItem(STORAGE_KEY)
-    if (!s) return null
-    return JSON.parse(s) as Partial<SchoolState>
+    const s = localStorage.getItem(STORAGE_KEY_SECONDARY)
+    if (s) return JSON.parse(s) as Partial<SchoolState>
+    const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)
+    if (!legacy) return null
+    const o = JSON.parse(legacy) as Partial<SchoolState>
+    return {
+      mensalidades: o.mensalidades,
+      lessonLogs: o.lessonLogs,
+      replacementClasses: o.replacementClasses,
+      settings: o.settings,
+    }
   } catch {
     return null
   }
 }
 
-function saveRaw(st: SchoolState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(st))
+function saveSecondary(st: SchoolState) {
+  const payload = {
+    mensalidades: st.mensalidades,
+    lessonLogs: st.lessonLogs,
+    replacementClasses: st.replacementClasses,
+    settings: st.settings,
+  }
+  localStorage.setItem(STORAGE_KEY_SECONDARY, JSON.stringify(payload))
 }
 
 function clearStudentFromAllSchedules(teachers: Teacher[], studentId: string): Teacher[] {
@@ -217,7 +214,7 @@ function clearStudentFromAllSchedules(teachers: Teacher[], studentId: string): T
 /** Alinha grades com regras de cancelamento (data) e matrículas ativas. */
 function reconcileTeacherSchedulesWithStudents(state: SchoolState): SchoolState {
   const today = new Date().toISOString().slice(0, 10)
-  let teachers: Teacher[] = state.teachers.map((t) => ({
+  const teachers: Teacher[] = state.teachers.map((t) => ({
     ...t,
     schedule: { ...t.schedule },
   }))
@@ -399,15 +396,22 @@ function resyncStudentsAfterTeacherSave(
 
 export type SchoolContextValue = {
   state: SchoolState
-  persist: () => void
-  resetDemoData: () => void
   getCourse: (id: string) => Course | undefined
   getTeacher: (id: string) => Teacher | undefined
   getStudent: (id: string) => Student | undefined
-  setCourses: (courses: Course[]) => void
+  setCourses: (courses: Course[]) => Promise<void>
+  /** Atualiza um curso (PATCH); nome do instrumento aplica a todos os níveis do mesmo slug. */
+  updateCourse: (
+    id: string,
+    patch: { instrumentLabel?: string; levelLabel?: string; monthlyPrice?: number },
+  ) => Promise<void>
+  /** Remove todos os cursos (níveis) com o mesmo `instrument` (slug). */
+  deleteCourse: (instrument: string) => Promise<void>
+  /** Atualiza o nome exibido (instrumentLabel) em todos os níveis do mesmo instrumento. */
+  updateInstrumentLabel: (instrument: string, newLabel: string) => Promise<void>
   saveSettings: (settings: SchoolSettings) => void
-  saveTeacher: (draft: Teacher) => void
-  saveStudent: (draft: Student) => { ok: true } | { ok: false; message: string }
+  saveTeacher: (draft: Teacher) => Promise<void>
+  saveStudent: (draft: Student) => Promise<{ ok: true } | { ok: false; message: string }>
   registerMensalidadePayment: (mensalidadeId: string, paidDate: string) => void
   saveLessonLog: (payload: {
     teacherId: string
@@ -435,32 +439,62 @@ export type SchoolContextValue = {
 const SchoolContext = createContext<SchoolContextValue | null>(null)
 
 export function SchoolProvider({ children }: { children: ReactNode }) {
+  const stateRef = useRef<SchoolState | null>(null)
+  /** Incrementado após PUT/PATCH de cursos; evita que GET /api/school/core (lento) sobrescreva com snapshot antigo. */
+  const remoteCoursesMutationGen = useRef(0)
+
   const [state, setState] = useState<SchoolState>(() => {
-    const raw = loadRaw()
-    const n = normalizeState(raw)
-    if (!raw?.teachers?.length) {
-      return { ...n, teachers: seedTeachers() }
-    }
-    return n
+    const sec = loadSecondaryPartial()
+    return normalizeState({
+      ...sec,
+      courses: [],
+      teachers: [],
+      students: [],
+    } as Partial<SchoolState>)
   })
+  stateRef.current = state
 
   useEffect(() => {
-    saveRaw(state)
+    saveSecondary(state)
   }, [state])
 
-  const persist = useCallback(() => saveRaw(state), [state])
-
-  const resetDemoData = useCallback(() => {
-    const n = normalizeState(null)
-    setState({
-      ...n,
-      teachers: seedTeachers(),
-      students: [],
-      mensalidades: [],
-      lessonLogs: [],
-      replacementClasses: [],
-      settings: { observacoesInternas: '' },
-    })
+  useEffect(() => {
+    let cancelled = false
+    const genAtFetchStart = remoteCoursesMutationGen.current
+    fetchWithTimeout('/api/school/core', { timeoutMs: 60_000 })
+      .then((r) => {
+        if (!r.ok) throw new Error(r.statusText)
+        return r.json() as Promise<{
+          courses: Course[]
+          teachers: Teacher[]
+          students: Student[]
+        }>
+      })
+      .then((core) => {
+        if (cancelled) return
+        setState((prev) => {
+          const coreStale = remoteCoursesMutationGen.current !== genAtFetchStart
+          return reconcileTeacherSchedulesWithStudents(
+            normalizeState({
+              mensalidades: prev.mensalidades,
+              lessonLogs: prev.lessonLogs,
+              replacementClasses: prev.replacementClasses,
+              settings: prev.settings,
+              courses: coreStale ? prev.courses : core.courses,
+              teachers: core.teachers,
+              students: core.students,
+            }),
+          )
+        })
+      })
+      .catch(() => {
+        window.alert(
+          'Não foi possível carregar cursos, professores e alunos do servidor. Inicie a API (npm run dev) e confira o DATABASE_URL no .env.',
+        )
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const getCourse = useCallback(
@@ -478,17 +512,141 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     [state.students],
   )
 
-  const setCourses = useCallback((courses: Course[]) => {
-    setState((prev) => ({ ...prev, courses: courses.map((c) => ({ ...c })) }))
+  const setCourses = useCallback(async (courses: Course[]) => {
+    const payload = coursesPayloadForPut(courses)
+    const res = await fetchWithTimeout('/api/courses', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const text = await res.text()
+    if (!res.ok) {
+      let msg = text || 'Falha ao salvar cursos no servidor.'
+      try {
+        const j = JSON.parse(text) as { error?: string }
+        if (j.error) msg = j.error
+      } catch {
+        /* usar texto bruto */
+      }
+      throw new Error(msg)
+    }
+    remoteCoursesMutationGen.current += 1
+    setState((prev) => ({ ...prev, courses: payload.map((c) => ({ ...c })) }))
+  }, [])
+
+  const updateCourse = useCallback(
+    async (
+      id: string,
+      patch: { instrumentLabel?: string; levelLabel?: string; monthlyPrice?: number },
+    ) => {
+      const res = await fetchWithTimeout(`/api/courses/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        let msg = text || 'Falha ao atualizar curso no servidor.'
+        try {
+          const j = JSON.parse(text) as { error?: string }
+          if (j.error) msg = j.error
+        } catch {
+          /* usar texto bruto */
+        }
+        throw new Error(msg)
+      }
+      let data: { courses?: Course[] }
+      try {
+        data = JSON.parse(text) as { courses?: Course[] }
+      } catch {
+        throw new Error('Resposta inválida do servidor ao atualizar curso.')
+      }
+      const next = data.courses
+      if (!Array.isArray(next)) {
+        throw new Error('Resposta do servidor sem lista de cursos.')
+      }
+      remoteCoursesMutationGen.current += 1
+      setState((prev) => ({ ...prev, courses: next.map((c) => ({ ...c })) }))
+    },
+    [],
+  )
+
+  const deleteCourse = useCallback(async (instrument: string) => {
+    const enc = encodeURIComponent(instrument)
+    const res = await fetchWithTimeout(`/api/courses/${enc}`, { method: 'DELETE' })
+    const text = await res.text()
+    if (!res.ok) {
+      let msg = text || 'Falha ao excluir cursos no servidor.'
+      try {
+        const j = JSON.parse(text) as { error?: string }
+        if (j.error) msg = j.error
+      } catch {
+        /* usar texto bruto */
+      }
+      throw new Error(msg)
+    }
+    let data: { courses?: Course[] }
+    try {
+      data = JSON.parse(text) as { courses?: Course[] }
+    } catch {
+      throw new Error('Resposta inválida do servidor ao excluir cursos.')
+    }
+    const next = data.courses
+    if (!Array.isArray(next)) {
+      throw new Error('Resposta do servidor sem lista de cursos.')
+    }
+    remoteCoursesMutationGen.current += 1
+    setState((prev) => ({ ...prev, courses: next.map((c) => ({ ...c })) }))
+  }, [])
+
+  const updateInstrumentLabel = useCallback(async (instrument: string, newLabel: string) => {
+    const enc = encodeURIComponent(instrument)
+    const res = await fetchWithTimeout(`/api/courses/instrument/${enc}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instrumentLabel: newLabel.trim() }),
+    })
+    const text = await res.text()
+    if (!res.ok) {
+      let msg = text || 'Falha ao atualizar o nome do curso no servidor.'
+      try {
+        const j = JSON.parse(text) as { error?: string }
+        if (j.error) msg = j.error
+      } catch {
+        /* usar texto bruto */
+      }
+      throw new Error(msg)
+    }
+    let data: { courses?: Course[] }
+    try {
+      data = JSON.parse(text) as { courses?: Course[] }
+    } catch {
+      throw new Error('Resposta inválida do servidor ao atualizar o nome do curso.')
+    }
+    const next = data.courses
+    if (!Array.isArray(next)) {
+      throw new Error('Resposta do servidor sem lista de cursos.')
+    }
+    remoteCoursesMutationGen.current += 1
+    setState((prev) => ({ ...prev, courses: next.map((c) => ({ ...c })) }))
   }, [])
 
   const saveSettings = useCallback((settings: SchoolSettings) => {
     setState((prev) => ({ ...prev, settings: { ...settings } }))
   }, [])
 
-  const saveTeacher = useCallback((draft: Teacher) => {
+  const saveTeacher = useCallback(async (draft: Teacher) => {
+    const savedRow: Teacher = { ...draft, schedule: { ...draft.schedule } }
+    const res = await fetch(`/api/teachers/${encodeURIComponent(savedRow.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(savedRow),
+    })
+    if (!res.ok) {
+      const t = await res.text()
+      throw new Error(t || 'Falha ao salvar professor no servidor.')
+    }
     setState((prev) => {
-      const savedRow: Teacher = { ...draft, schedule: { ...draft.schedule } }
       const exists = prev.teachers.some((t) => t.id === savedRow.id)
       const teachers = exists
         ? prev.teachers.map((t) => (t.id === savedRow.id ? savedRow : t))
@@ -499,17 +657,32 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const saveStudent = useCallback((draft: Student) => {
-    let err: string | null = null
-    setState((prev) => {
-      const r = tryCommitStudent(prev, draft)
-      if ('error' in r) {
-        err = r.error
-        return prev
+  const saveStudent = useCallback(async (draft: Student) => {
+    const prev = stateRef.current!
+    const r = tryCommitStudent(prev, draft)
+    if ('error' in r) {
+      return { ok: false as const, message: r.error }
+    }
+    const nextStudent = r.state.students.find((s) => s.id === draft.id)
+    if (!nextStudent) return { ok: false as const, message: 'Erro ao preparar aluno.' }
+    try {
+      const res = await fetch(`/api/students/${encodeURIComponent(nextStudent.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextStudent),
+      })
+      if (!res.ok) {
+        const t = await res.text()
+        throw new Error(t)
       }
-      return r.state
-    })
-    return err ? { ok: false as const, message: err } : { ok: true as const }
+      setState(r.state)
+      return { ok: true as const }
+    } catch {
+      return {
+        ok: false as const,
+        message: 'Erro ao salvar aluno no servidor. Verifique a API e o banco de dados.',
+      }
+    }
   }, [])
 
   const registerMensalidadePayment = useCallback((mensalidadeId: string, paidDate: string) => {
@@ -692,12 +865,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       state,
-      persist,
-      resetDemoData,
       getCourse,
       getTeacher,
       getStudent,
       setCourses,
+      updateCourse,
+      deleteCourse,
+      updateInstrumentLabel,
       saveSettings,
       saveTeacher,
       saveStudent,
@@ -708,12 +882,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
-      persist,
-      resetDemoData,
       getCourse,
       getTeacher,
       getStudent,
       setCourses,
+      updateCourse,
+      deleteCourse,
+      updateInstrumentLabel,
       saveSettings,
       saveTeacher,
       saveStudent,

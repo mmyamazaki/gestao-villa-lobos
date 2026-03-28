@@ -43,12 +43,14 @@ export function Alunos() {
       dataCancelamento: cancelDate.slice(0, 10),
       observacoesCancelamento: cancelObs.trim() || undefined,
     }
-    const r = saveStudent(updated)
-    if (!r.ok) {
-      window.alert(r.message)
-      return
-    }
-    setCancelModal(null)
+    void (async () => {
+      const r = await saveStudent(updated)
+      if (!r.ok) {
+        window.alert(r.message)
+        return
+      }
+      setCancelModal(null)
+    })()
   }
 
   const openReactivateModal = (s: Student) => {
@@ -71,12 +73,14 @@ export function Alunos() {
       dataCancelamento: undefined,
       observacoesCancelamento: undefined,
     }
-    const r = saveStudent(updated)
-    if (!r.ok) {
-      window.alert(r.message)
-      return
-    }
-    setReactivateModal(null)
+    void (async () => {
+      const r = await saveStudent(updated)
+      if (!r.ok) {
+        window.alert(r.message)
+        return
+      }
+      setReactivateModal(null)
+    })()
   }
 
   const replacementTimeOptions = (() => {
@@ -175,7 +179,12 @@ export function Alunos() {
               </div>
               <div className="mt-3 space-y-1.5 text-sm text-slate-700">
                 <p>Idade: {age !== null ? `${age}` : '—'}</p>
-                <p>Curso/Professor: {course && teacher ? `${course.instrumentLabel} · ${teacher.nome}` : '—'}</p>
+                <p>
+                  Curso/Professor:{' '}
+                  {course && teacher
+                    ? `${course.instrumentLabel} - ${course.levelLabel} · ${teacher.nome}`
+                    : '—'}
+                </p>
                 <p className="text-xs text-slate-600">
                   Horários: {en?.slotKeys?.length ? en.slotKeys.map((k) => formatSlotKeyLabel(k)).join('; ') : '—'}
                 </p>
@@ -263,7 +272,7 @@ export function Alunos() {
                   <td className="px-4 py-3 text-slate-600">{age !== null ? `${age}` : '—'}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {course && teacher
-                      ? `${course.instrumentLabel} · ${teacher.nome}`
+                      ? `${course.instrumentLabel} - ${course.levelLabel} · ${teacher.nome}`
                       : '—'}
                   </td>
                   <td className="max-w-[220px] px-4 py-3 text-xs text-slate-600">

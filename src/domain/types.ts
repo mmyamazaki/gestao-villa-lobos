@@ -1,5 +1,3 @@
-export type CourseStage = 1 | 2 | 3
-
 export type InstrumentKey =
   | 'violao'
   | 'guitarra'
@@ -14,7 +12,8 @@ export interface Course {
   /** Identificador do instrumento (presets ou `custom-*` para cursos adicionados pelo usuário) */
   instrument: string
   instrumentLabel: string
-  stage: CourseStage
+  /** Nível / ano (texto livre), ex.: "Pré", "1º ano", "4º/5º ano". */
+  levelLabel: string
   monthlyPrice: number
 }
 

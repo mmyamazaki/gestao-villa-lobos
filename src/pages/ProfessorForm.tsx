@@ -367,6 +367,13 @@ function ProfessorFormInner({
         onSave={async () => {
           const nextFieldErrors: Record<string, string> = {}
           setFormError(null)
+          if (courses.length === 0 || instrumentOptions.length === 0) {
+            const msg =
+              'Não há cursos cadastrados. Acesse o menu Cursos e cadastre ao menos um instrumento/curso antes de salvar um professor.'
+            setFormError(msg)
+            window.alert(msg)
+            return
+          }
           if (draft.instrumentSlugs.length === 0) {
             nextFieldErrors.instrumentSlugs = 'Selecione ao menos um instrumento.'
           }
@@ -406,14 +413,12 @@ function ProfessorFormInner({
 
           try {
             setIsSaving(true)
-            await Promise.resolve(
-              saveTeacher({
-                ...draft,
-                login: draft.login.trim(),
-                email: draft.email.trim(),
-                celular: draft.celular.trim(),
-              }),
-            )
+            await saveTeacher({
+              ...draft,
+              login: draft.login.trim(),
+              email: draft.email.trim(),
+              celular: draft.celular.trim(),
+            })
             setFieldErrors({})
             onDone()
           } catch {

@@ -177,16 +177,15 @@ function MatriculaInner({
   )
   const [sixtyDay, setSixtyDay] = useState<number | ''>('')
   const [sixtyStartSlot, setSixtyStartSlot] = useState<number | ''>('')
+  const baselineSlotKeysSorted = useMemo(
+    () => sortSlotKeys(baseline.enrollment?.slotKeys ?? []),
+    [baseline.enrollment?.slotKeys],
+  )
   const baseline30 = useMemo(() => {
     const m = baseline.enrollment?.lessonMode ?? '60x1'
-    const keys =
-      m === '30x2' ? sortSlotKeys(baseline.enrollment?.slotKeys ?? []) : []
+    const keys = m === '30x2' ? baselineSlotKeysSorted : []
     return derive30DropdownsFromKeys(keys)
-  }, [
-    baseline.enrollment?.lessonMode,
-    baseline.id,
-    sortSlotKeys(baseline.enrollment?.slotKeys ?? []).join('|'),
-  ])
+  }, [baseline.enrollment?.lessonMode, baselineSlotKeysSorted])
   /** Opção B — primeira aula 30 min */
   const [thirtyFirstDay, setThirtyFirstDay] = useState<number | ''>(
     () => baseline30.firstDay,
@@ -858,7 +857,7 @@ function MatriculaInner({
               <option value="">Selecione…</option>
               {state.courses.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.instrumentLabel} — {c.stage}º estágio — R${c.monthlyPrice.toFixed(0)}
+                  {c.instrumentLabel} - {c.levelLabel} — R${c.monthlyPrice.toFixed(0)}
                 </option>
               ))}
             </select>
@@ -1216,7 +1215,7 @@ function MatriculaInner({
             const toSave: Student = { ...next, enrollment }
             try {
               setIsSaving(true)
-              const result = await Promise.resolve(saveStudent(toSave))
+              const result = await saveStudent(toSave)
               if (!result.ok) {
                 setFormError(result.message)
                 window.alert(result.message)

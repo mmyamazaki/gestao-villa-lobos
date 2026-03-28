@@ -12,16 +12,21 @@ function adminPlainPassword() {
   return process.env.VITE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123'
 }
 
+function adminDisplayName() {
+  return process.env.ADMIN_NAME?.trim() || 'Administrador principal'
+}
+
 async function main() {
   const email = adminEmail()
   const plain = adminPlainPassword()
   const passwordHash = await bcrypt.hash(plain, 10)
-  await prisma.adminUser.upsert({
+  const name = adminDisplayName()
+  await prisma.admin.upsert({
     where: { email },
-    create: { email, passwordHash },
+    create: { email, name, passwordHash },
     update: { passwordHash },
   })
-  console.log('[seed] Administrador sincronizado no banco:', email)
+  console.log('[seed] Administrador sincronizado na tabela admins:', email)
 }
 
 main()

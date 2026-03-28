@@ -167,7 +167,7 @@ export async function generateEnrollmentContractPdf(
   y += paraGap(doc)
   y = drawWrappedText(
     doc,
-    `1.1 Curso livre de ${course.instrumentLabel} (estágio ${course.stage}), no valor mensal de R$ ${base.toFixed(2)}.`,
+    `1.1 Curso livre de ${course.instrumentLabel} — nível ${course.levelLabel}, no valor mensal de R$ ${base.toFixed(2)}.`,
     PDF_MARGIN_X,
     y,
     maxW,

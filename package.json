@@ -4,41 +4,63 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "predev": "node scripts/predev.mjs",
+    "doctor": "node scripts/predev.mjs",
+    "check-quick": "node scripts/check-quick.mjs",
+    "dev": "npm run predev && concurrently -k -n api,vite -c magenta,cyan \"tsx watch server/index.ts\" \"node scripts/wait-api.mjs && vite\"",
+    "dev:client": "vite",
+    "preserver": "npm run predev",
+    "server": "tsx server/index.ts",
+    "prebuild": "npm run check-quick",
     "build": "tsc -b && vite build",
+    "prelint": "npm run check-quick",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "preview": "vite preview",
+    "predb:push": "npm run check-quick",
     "db:push": "prisma db push",
+    "predb:generate": "npm run check-quick",
     "db:generate": "prisma generate",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "verify:env": "node scripts/verify-env.mjs",
+    "validate:backend": "node scripts/validate-backend-course.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.6",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
     "jspdf": "^4.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.2"
   },
   "devDependencies": {
-    "bcryptjs": "^3.0.2",
-    "prisma": "^6.19.0",
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "prisma": "^6.19.0",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "wait-on": "^8.0.5"
   }
 }

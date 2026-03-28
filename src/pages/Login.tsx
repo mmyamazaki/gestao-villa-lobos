@@ -18,6 +18,7 @@ export function Login() {
   const [usuario, setUsuario] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
+  const [busyAdmin, setBusyAdmin] = useState(false)
 
   useEffect(() => {
     const t = (location.state as { tipo?: Tipo } | null)?.tipo
@@ -71,18 +72,25 @@ export function Login() {
           onSubmit={(e) => {
             e.preventDefault()
             setErro('')
-            if (tipo === 'secretaria') {
-              const ok = loginAdmin(usuario.trim(), senha)
-              if (!ok) setErro('E-mail ou senha da secretaria inválidos.')
-              return
-            }
-            if (tipo === 'professor') {
-              const ok = loginTeacher(usuario.trim(), senha, state)
-              if (!ok) setErro('Login ou senha do professor inválidos.')
-              return
-            }
-            const ok = loginStudent(usuario.trim(), senha, state)
-            if (!ok) setErro('Login ou senha do aluno inválidos.')
+            void (async () => {
+              if (tipo === 'secretaria') {
+                setBusyAdmin(true)
+                try {
+                  const ok = await loginAdmin(usuario.trim(), senha)
+                  if (!ok) setErro('E-mail ou senha da secretaria inválidos.')
+                } finally {
+                  setBusyAdmin(false)
+                }
+                return
+              }
+              if (tipo === 'professor') {
+                const ok = loginTeacher(usuario.trim(), senha, state)
+                if (!ok) setErro('Login ou senha do professor inválidos.')
+                return
+              }
+              const ok = loginStudent(usuario.trim(), senha, state)
+              if (!ok) setErro('Login ou senha do aluno inválidos.')
+            })()
           }}
         >
           <label className="block">
@@ -114,25 +122,23 @@ export function Login() {
           </label>
           {tipo === 'secretaria' && (
             <p className="text-xs text-slate-500">
-              Use o e-mail e a senha definidos no arquivo <strong>.env</strong> (
-              <code className="rounded bg-slate-100 px-1">VITE_ADMIN_EMAIL</code>,{' '}
-              <code className="rounded bg-slate-100 px-1">VITE_ADMIN_PASSWORD</code>). Depois de
-              alterar, rode <code className="rounded bg-slate-100 px-1">npm run db:seed</code> para
-              atualizar o registro no Supabase.
+              Acesso com o administrador principal do <strong>.env</strong> ou com qualquer conta da
+              tabela <code className="rounded bg-slate-100 px-1">admins</code> no Supabase (requer{' '}
+              <code className="rounded bg-slate-100 px-1">VITE_SUPABASE_*</code> configurado).
             </p>
           )}
           {tipo === 'professor' && (
             <p className="text-xs text-slate-500">
-              Professores demo: <strong>helena.prado</strong> ou <strong>ricardo.mendes</strong> /{' '}
-              <strong>prof123</strong>
+              Use o login e a senha cadastrados na ficha do professor em Professores.
             </p>
           )}
           {erro && <p className="text-sm text-red-700">{erro}</p>}
           <button
             type="submit"
-            className="w-full rounded-lg bg-[#003366] py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#00264d] focus:outline-none focus:ring-2 focus:ring-[#00AEEF]/50"
+            disabled={busyAdmin}
+            className="w-full rounded-lg bg-[#003366] py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#00264d] focus:outline-none focus:ring-2 focus:ring-[#00AEEF]/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Entrar
+            {busyAdmin ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
       </div>

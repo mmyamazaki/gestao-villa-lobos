@@ -1,5 +1,5 @@
-// Schema alinhado ao domínio do sistema (persistência futura / backup Supabase).
-// O app continua usando estado local; este schema prepara as tabelas no PostgreSQL.
+// Schema PostgreSQL (Supabase). Cursos, professores e alunos são persistidos via API + Prisma.
+// Parcelas, logs e reposições permanecem no armazenamento local do navegador até migração futura.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,7 +14,8 @@ model Course {
   id              String  @id
   instrument      String
   instrumentLabel String
-  stage           Int
+  /** Nível ou ano (texto livre), ex.: "Pré", "4º/5º ano". */
+  levelLabel      String
   monthlyPrice    Decimal @db.Decimal(12, 2)
 }
 
@@ -104,13 +105,20 @@ model SchoolSettings {
   observacoesInternas String @default("")
 }
 
-/** Secretaria (admin) — login no app usa VITE_ADMIN_*; aqui guardamos hash para auditoria/API futura. */
-model AdminUser {
-  id           String   @id @default(cuid())
+/**
+ * Administradores da secretaria.
+ * Senha: apenas hash bcrypt na coluna password_hash (nunca texto puro).
+ */
+model Admin {
+  /** DEFAULT no PostgreSQL para inserts sem id (PostgREST). O app também envia crypto.randomUUID() no formulário. */
+  id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
   email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  name         String
+  passwordHash String   @map("password_hash")
+  /** DEFAULT now() no PostgreSQL — necessário para inserts via PostgREST sem enviar timestamps. */
+  createdAt    DateTime @default(dbgenerated("now()")) @map("created_at")
+  /** DEFAULT now() no INSERT; trigger `admins_touch_updated_at` mantém em UPDATEs (ver prisma/sql/). */
+  updatedAt    DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
 
-  @@map("admin_users")
+  @@map("admins")
 }
