@@ -12,7 +12,7 @@
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
     "prebuild": "npm run check-quick",
-    "build": "vite build",
+    "build": "npx vite build",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -31,6 +31,8 @@
   "dependencies": {
     "@prisma/client": "^6.19.0",
     "@supabase/supabase-js": "^2.49.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
@@ -39,28 +41,26 @@
     "jspdf": "^4.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.2"
+    "react-router-dom": "^7.13.2",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@tailwindcss/vite": "^4.2.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "prisma": "^6.19.0",
-    "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1",
     "wait-on": "^8.0.5"
   }
 }
