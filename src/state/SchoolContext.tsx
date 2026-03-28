@@ -462,16 +462,33 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     const genAtFetchStart = remoteCoursesMutationGen.current
-    fetchWithTimeout(apiUrl('/api/school/core'), { timeoutMs: 60_000 })
-      .then((r) => {
-        if (!r.ok) throw new Error(r.statusText)
-        return r.json() as Promise<{
-          courses: Course[]
-          teachers: Teacher[]
-          students: Student[]
-        }>
-      })
-      .then((core) => {
+
+    void (async () => {
+      try {
+        const r = await fetchWithTimeout(apiUrl('/api/school/core'), { timeoutMs: 60_000 })
+        const text = await r.text()
+
+        if (!r.ok) {
+          throw new Error(
+            `HTTP ${r.status}: ${text.slice(0, 280) || r.statusText || 'sem corpo'}`,
+          )
+        }
+
+        let core: { courses: Course[]; teachers: Teacher[]; students: Student[] }
+        try {
+          core = JSON.parse(text) as {
+            courses: Course[]
+            teachers: Teacher[]
+            students: Student[]
+          }
+        } catch {
+          const looksLikeHtml =
+            text.includes('<!DOCTYPE') ||
+            text.includes('<html') ||
+            /^\s*</.test(text)
+          throw new Error(looksLikeHtml ? '__NO_API__' : '__BAD_JSON__')
+        }
+
         if (cancelled) return
         setState((prev) => {
           const coreStale = remoteCoursesMutationGen.current !== genAtFetchStart
@@ -487,15 +504,28 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             }),
           )
         })
-      })
-      .catch(() => {
-        const hint = import.meta.env.DEV
-          ? ' Inicie a API (npm run dev) e confira DATABASE_URL no .env.'
-          : ' Confirme que o servidor Node está em execução (npm start), DATABASE_URL no painel e que a API responde no mesmo domínio ou em VITE_API_BASE_URL.'
+      } catch (e) {
+        console.error('[SchoolProvider] GET /api/school/core', e)
+        const msg = e instanceof Error ? e.message : String(e)
+
+        if (msg === '__NO_API__' || msg === '__BAD_JSON__') {
+          window.alert(
+            msg === '__BAD_JSON__'
+              ? 'A resposta em /api/school/core não é JSON válido. Se o site está só em hospedagem estática, não existe API: use Node na Hostinger (npm start após o build) ou defina VITE_API_BASE_URL para a URL da API e faça novo build.'
+              : 'O servidor devolveu HTML em vez da API (rota /api inexistente ou só ficheiros estáticos). Isto costuma acontecer quando o deploy só publica a pasta dist sem correr Node. Solução: hospedagem com Node.js e comando de arranque "npm start", ou API noutro domínio com VITE_API_BASE_URL no build.',
+          )
+          return
+        }
+
+        const devHint = import.meta.env.DEV
+          ? '\n\n(dev) Inicie a API: npm run dev e confira DATABASE_URL.'
+          : ''
         window.alert(
-          `Não foi possível carregar cursos, professores e alunos do servidor.${hint}`,
+          `Não foi possível carregar cursos, professores e alunos.${devHint}\n\nDetalhe: ${msg.slice(0, 400)}`,
         )
-      })
+      }
+    })()
+
     return () => {
       cancelled = true
     }

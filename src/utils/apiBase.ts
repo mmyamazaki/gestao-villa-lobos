@@ -1,14 +1,12 @@
 /**
- * URL absoluta da API. Em dev, caminhos relativos (`/api/...`) usam o proxy do Vite.
- * Em produção: `VITE_API_BASE_URL` se definido; senão `window.location.origin` (mesmo host que o SPA).
+ * URL para chamadas à API.
+ * - Com `VITE_API_BASE_URL`: usa essa base (API noutro host).
+ * - Sem isso: caminho relativo `/api/...` (mesmo domínio que o site — correto para Express + SPA no mesmo processo).
  */
 export function apiUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`
   const fromEnv = import.meta.env.VITE_API_BASE_URL as string | undefined
   const base = typeof fromEnv === 'string' ? fromEnv.trim().replace(/\/$/, '') : ''
   if (base) return `${base}${normalized}`
-  if (import.meta.env.PROD && typeof window !== 'undefined') {
-    return `${window.location.origin}${normalized}`
-  }
   return normalized
 }
