@@ -12,7 +12,7 @@
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
     "prebuild": "npm run check-quick",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
