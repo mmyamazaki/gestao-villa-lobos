@@ -32,6 +32,7 @@ import type {
   Teacher,
 } from '../domain/types'
 import type { ScheduleMap } from '../domain/types'
+import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout } from '../utils/fetchWithTimeout'
 import { ensureSchedule } from './schoolUtils'
 
@@ -461,7 +462,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     const genAtFetchStart = remoteCoursesMutationGen.current
-    fetchWithTimeout('/api/school/core', { timeoutMs: 60_000 })
+    fetchWithTimeout(apiUrl('/api/school/core'), { timeoutMs: 60_000 })
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText)
         return r.json() as Promise<{
@@ -488,8 +489,11 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         })
       })
       .catch(() => {
+        const hint = import.meta.env.DEV
+          ? ' Inicie a API (npm run dev) e confira DATABASE_URL no .env.'
+          : ' Confirme que o servidor Node está em execução (npm start), DATABASE_URL no painel e que a API responde no mesmo domínio ou em VITE_API_BASE_URL.'
         window.alert(
-          'Não foi possível carregar cursos, professores e alunos do servidor. Inicie a API (npm run dev) e confira o DATABASE_URL no .env.',
+          `Não foi possível carregar cursos, professores e alunos do servidor.${hint}`,
         )
       })
     return () => {
@@ -514,7 +518,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const setCourses = useCallback(async (courses: Course[]) => {
     const payload = coursesPayloadForPut(courses)
-    const res = await fetchWithTimeout('/api/courses', {
+    const res = await fetchWithTimeout(apiUrl('/api/courses'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -539,7 +543,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       id: string,
       patch: { instrumentLabel?: string; levelLabel?: string; monthlyPrice?: number },
     ) => {
-      const res = await fetchWithTimeout(`/api/courses/${encodeURIComponent(id)}`, {
+      const res = await fetchWithTimeout(apiUrl(`/api/courses/${encodeURIComponent(id)}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -573,7 +577,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const deleteCourse = useCallback(async (instrument: string) => {
     const enc = encodeURIComponent(instrument)
-    const res = await fetchWithTimeout(`/api/courses/${enc}`, { method: 'DELETE' })
+    const res = await fetchWithTimeout(apiUrl(`/api/courses/${enc}`), { method: 'DELETE' })
     const text = await res.text()
     if (!res.ok) {
       let msg = text || 'Falha ao excluir cursos no servidor.'
@@ -601,7 +605,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const updateInstrumentLabel = useCallback(async (instrument: string, newLabel: string) => {
     const enc = encodeURIComponent(instrument)
-    const res = await fetchWithTimeout(`/api/courses/instrument/${enc}`, {
+    const res = await fetchWithTimeout(apiUrl(`/api/courses/instrument/${enc}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instrumentLabel: newLabel.trim() }),
@@ -637,7 +641,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const saveTeacher = useCallback(async (draft: Teacher) => {
     const savedRow: Teacher = { ...draft, schedule: { ...draft.schedule } }
-    const res = await fetch(`/api/teachers/${encodeURIComponent(savedRow.id)}`, {
+    const res = await fetch(apiUrl(`/api/teachers/${encodeURIComponent(savedRow.id)}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(savedRow),
@@ -666,7 +670,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     const nextStudent = r.state.students.find((s) => s.id === draft.id)
     if (!nextStudent) return { ok: false as const, message: 'Erro ao preparar aluno.' }
     try {
-      const res = await fetch(`/api/students/${encodeURIComponent(nextStudent.id)}`, {
+      const res = await fetch(apiUrl(`/api/students/${encodeURIComponent(nextStudent.id)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextStudent),

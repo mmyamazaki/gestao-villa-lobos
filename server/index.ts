@@ -1,8 +1,13 @@
 /**
- * API local com Prisma — cursos, professores e alunos persistidos no Supabase/Postgres.
- * Inicie com: npm run server (ou npm run dev, que sobe Vite + este servidor).
+ * API com Prisma — cursos, professores e alunos persistidos no Supabase/Postgres.
+ * Em produção pode servir também o frontend (pasta dist/) no mesmo processo.
+ * Inicie com: npm run server ou npm start (produção).
  */
 import 'dotenv/config'
+
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
@@ -21,15 +26,22 @@ import {
 const prisma = new PrismaClient()
 const app = express()
 
-function resolveApiPort(): number {
-  const raw = process.env.API_PORT?.trim()
-  if (!raw) return 3333
-  const n = Number.parseInt(raw, 10)
-  if (!Number.isFinite(n) || n < 1 || n > 65535) return 3333
-  return n
-}
+/** Hostinger injeta PORT. Em local, `predev` costuma definir só API_PORT — usamos como fallback. */
+const PORT = Number(process.env.PORT) || Number(process.env.API_PORT) || 3333
 
-const PORT = resolveApiPort()
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const distDir = join(__dirname, '../dist')
+
+function resolveCorsOrigin(): boolean | string | RegExp | (string | RegExp)[] {
+  const raw = process.env.ALLOWED_ORIGINS?.trim()
+  if (!raw) return true
+  const list = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (list.length === 0) return true
+  return list.length === 1 ? list[0]! : list
+}
 
 if (!process.env.DATABASE_URL?.trim()) {
   console.warn(
@@ -49,7 +61,12 @@ async function getCourseIdsWithEnrollment(): Promise<Set<string>> {
   return ids
 }
 
-app.use(cors({ origin: true }))
+app.use(
+  cors({
+    origin: resolveCorsOrigin(),
+    credentials: true,
+  }),
+)
 app.use(express.json({ limit: '20mb' }))
 
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -391,14 +408,32 @@ app.put('/api/students/:id', async (req: Request, res: Response) => {
   }
 })
 
-const server = app.listen(PORT, '127.0.0.1', () => {
-  console.log(`[api] escutando em http://127.0.0.1:${PORT}`)
+if (existsSync(distDir)) {
+  app.use(express.static(distDir, { index: false }))
+  app.use((req: Request, res: Response, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+      next()
+      return
+    }
+    res.sendFile(join(distDir, 'index.html'), (err) => {
+      if (err) next(err)
+    })
+  })
+}
+
+const LISTEN_HOST = process.env.LISTEN_HOST?.trim() || '0.0.0.0'
+
+const server = app.listen(PORT, LISTEN_HOST, () => {
+  console.log(`[api] escutando em http://${LISTEN_HOST}:${PORT}`)
+  if (existsSync(distDir)) {
+    console.log(`[api] servindo frontend estático de ${distDir}`)
+  }
 })
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
     console.error(
-      `[api] Porta ${PORT} já está em uso. Encerre o outro processo ou defina API_PORT no .env.`,
+      `[api] Porta ${PORT} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
     )
   } else {
     console.error('[api] Erro ao abrir o servidor:', err.message)

@@ -5,6 +5,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// DATABASE_URL: no Supabase use "Connection pooling" (porta 6543) em produção para evitar "too many connections".
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
