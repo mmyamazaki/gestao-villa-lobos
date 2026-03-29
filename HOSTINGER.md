@@ -39,7 +39,7 @@ O launcher da Hostinger (`lsnode.js`) pode carregar o ficheiro de entrada com `r
 - **`server.js`** existe para painéis que obrigam **Entry file** em JavaScript; podes também correr localmente: `node server.js`.
 - `npm run build` → gera `dist/`; o Express serve `dist/` + rotas `/api` no **mesmo processo**.
 - `postinstall` → `prisma generate` após `npm install`.
-- Escuta com `app.listen(PORT, '0.0.0.0')` — `PORT` vem de `process.env.PORT` (em produção é obrigatória); em desenvolvimento local, se não houver `PORT`, usa `API_PORT` ou `3333`.
+- Escuta com `app.listen(PORT, '0.0.0.0')` — porta: `PORT` / `SERVER_PORT` / `HTTP_PORT`; em produção sem nenhuma, usa **3000** (e avisa no log); em dev, `API_PORT` ou `3333`.
 
 ## Se não aparecer “Node.js App” no teu plano
 

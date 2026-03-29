@@ -30,22 +30,29 @@ const NODE_ENV = process.env.NODE_ENV ?? 'development'
 const isProduction = NODE_ENV === 'production'
 
 /**
- * Em PaaS (Hostinger, etc.) o proxy encaminha para `process.env.PORT` — não usar porta fixa.
- * Em desenvolvimento local: `API_PORT` ou 3333 se `PORT` não existir.
+ * Em PaaS (Hostinger, etc.) o proxy encaminha para a porta do ambiente.
+ * Ordem: PORT → SERVER_PORT → HTTP_PORT; em produção sem nenhuma, fallback 3000 (como app.listen(PORT || 3000)).
+ * Em dev local: API_PORT ou 3333.
  */
 function resolveListenPort(): number {
-  const raw = process.env.PORT?.trim()
-  if (raw) {
+  const candidates = [
+    process.env.PORT?.trim(),
+    process.env.SERVER_PORT?.trim(),
+    process.env.HTTP_PORT?.trim(),
+  ]
+  for (const raw of candidates) {
+    if (!raw) continue
     const n = Number(raw)
     if (Number.isFinite(n) && n > 0) return n
     console.error(`[api] PORT inválida: ${raw}`)
     process.exit(1)
   }
   if (isProduction) {
-    console.error(
-      '[api] PORT ausente em produção. O painel deve injetar PORT; sem ela o proxy devolve 503.',
+    const fallback = 3000
+    console.warn(
+      `[api] Nenhuma de PORT/SERVER_PORT/HTTP_PORT definida em produção — a escutar em ${fallback}. Se o proxy usar outra, defina PORT no painel.`,
     )
-    process.exit(1)
+    return fallback
   }
   console.warn(
     '[api] PORT não definida (modo dev). Em Hostinger/preview o painel deve definir ou injetar PORT.',
@@ -456,8 +463,9 @@ if (existsSync(distDir)) {
 }
 
 const server = app.listen(PORT, LISTEN_HOST, () => {
-  // Linha fácil de achar nos logs do host ("listening on" / escutando)
-  console.log(`[api] listening on http://${LISTEN_HOST}:${PORT} (escutando)`)
+  console.log(
+    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${LISTEN_HOST}:${PORT}`,
+  )
   if (existsSync(distDir)) {
     console.log(`[api] servindo frontend estático de ${distDir}`)
   }
