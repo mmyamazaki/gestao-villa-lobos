@@ -33,13 +33,13 @@ type Props = {
   ) => void
 }
 
+/** Cores base da grade — indisponível: vermelho suave (bloqueio), sem confundir com erro de formulário */
 function cellClasses(cell: SlotState, mode: Props['mode']) {
   if (cell.status === 'busy') {
-    return 'bg-indigo-100 text-indigo-950 ring-1 ring-indigo-200'
+    return 'bg-indigo-100 ring-1 ring-indigo-200'
   }
   if (cell.status === 'unavailable') {
-    /* slate: indisponível ≠ erro de formulário (evita confusão com validação em vermelho) */
-    return 'bg-slate-500 text-white ring-1 ring-slate-600'
+    return 'bg-rose-100/90 text-rose-950 ring-1 ring-rose-200/90'
   }
   return mode === 'pick'
     ? 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200 hover:bg-emerald-200'
@@ -72,7 +72,7 @@ export function ScheduleLegend() {
         Livre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-slate-500 ring-1 ring-slate-600" />
+        <span className="h-3 w-6 rounded bg-rose-200/90 ring-1 ring-rose-300" />
         Indisponível
       </span>
       <span className="inline-flex items-center gap-2">
@@ -162,6 +162,9 @@ export function ScheduleGrid({
                     ? true
                     : displayCell.status === 'free' ||
                       (displayCell.status === 'busy' && displayCell.studentId === pickingStudentId)
+                /** Não escurecer células ocupadas só por estar disabled (outro aluno): mantém nome legível */
+                const dimDisabledSlot =
+                  !clickable && displayCell.status !== 'busy' && displayCell.status !== 'unavailable'
                 const rs = rowspan.get(key) ?? 1
                 const tall = rs > 1
 
@@ -180,22 +183,25 @@ export function ScheduleGrid({
                       onClick={() => onToggle?.(key, displayCell, { dayIndex, slotIndex })}
                       className={[
                         tall
-                          ? 'flex min-h-[5.5rem] w-full flex-col items-center justify-center rounded-md px-1 text-center font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40'
-                          : 'flex min-h-[44px] w-full flex-col items-center justify-center rounded-md px-1 text-center font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                          ? 'flex min-h-[5.5rem] w-full flex-col items-center justify-center rounded-md px-1 text-center transition-colors disabled:cursor-not-allowed'
+                          : 'flex min-h-[44px] w-full flex-col items-center justify-center rounded-md px-1 text-center transition-colors disabled:cursor-not-allowed',
+                        dimDisabledSlot ? 'disabled:opacity-40' : '',
                         transient
-                          ? 'bg-violet-100 text-violet-950 ring-1 ring-violet-300'
+                          ? 'bg-violet-100 ring-1 ring-violet-300'
                           : cellClasses(displayCell, mode),
                       ].join(' ')}
                     >
                       {displayCell.status === 'busy' ? (
                         <span className="flex w-full flex-col items-center justify-center gap-0.5 leading-tight">
-                          <span className="block text-center font-semibold">{displayCell.studentName}</span>
+                          <span className="block max-w-full text-center text-sm font-bold leading-snug text-slate-900">
+                            {displayCell.studentName}
+                          </span>
                           {transient ? (
-                            <span className="rounded bg-violet-700 px-1 py-0.5 text-[9px] font-semibold text-white">
-                              REPOSIÇÃO
+                            <span className="rounded bg-violet-800 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                              Reposição
                             </span>
                           ) : displayCell.instrumentLabel ? (
-                            <span className="block text-center text-[9px] font-normal leading-tight text-indigo-900/90">
+                            <span className="block max-w-full text-center text-[11px] font-bold leading-tight text-blue-950">
                               {displayCell.instrumentLabel}
                             </span>
                           ) : null}

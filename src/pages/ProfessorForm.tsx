@@ -400,8 +400,8 @@ function ProfessorFormInner({
           <div>
             <h3 className="text-base font-semibold text-slate-900">Grade de horários</h3>
             <p className="text-sm text-slate-600">
-              Verde: livre · Cinza: indisponível · Com nome: ocupado (clique para liberar). A cor da grade não
-              indica erro ao salvar — erros de formulário aparecem nos campos de texto acima.
+              Verde: livre · Vermelho suave: indisponível · Com nome em destaque: ocupado (clique para liberar). A
+              cor da grade não indica erro ao salvar — erros de formulário aparecem nos campos de texto acima.
             </p>
           </div>
         </div>
