@@ -35,7 +35,7 @@ O **`server.js`** não usa top-level await; importa só JS já compilado.
 
 ### `TransformError` / `esbuild` / **`EACCES`**
 
-Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão**. O **`postinstall`** (`scripts/postinstall.mjs`): **`chmod` 755** nos binários esbuild acima, **`npm rebuild esbuild --force`**, **`npx esbuild --version`**, depois **`prisma generate`**. O **`npm start`** não usa `tsx` — API em **`dist-server/`** (`tsc`); o **Vite** no **`npm run build`** ainda usa esbuild no bundler.
+Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão**. O **`esbuild`** está em **`devDependencies`** (junto ao Vite). O **`postinstall`** (`scripts/postinstall.mjs`): **`chmod` 755** só em **`node_modules/esbuild/bin/esbuild`**, **`npm rebuild esbuild --force`**, **`npx esbuild --version`**, depois **`prisma generate`**. O **`npm start`** não usa `tsx` — API em **`dist-server/`** (`tsc`); o **Vite** no **`npm run build`** usa o esbuild resolvido a partir da raiz do projeto.
 
 ## O que o projeto já garante (para não precisares de mudar código)
 

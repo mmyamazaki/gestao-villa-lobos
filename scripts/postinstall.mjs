@@ -1,19 +1,17 @@
 /**
- * Hostinger / Linux: EACCES no binário nativo do esbuild.
- * 1) chmod nos caminhos usuais
- * 2) npm rebuild esbuild --force (reinstala binário da plataforma)
- * 3) npx esbuild --version (validação)
- * 4) prisma generate
+ * Hostinger / Linux: EACCES no binário esbuild (Vite build).
+ * Com `esbuild` como dependência direta, o alvo relevante é o binário do pacote top-level.
  *
- * Nota: @esbuild/linux-x64 não é dependência direta — vem de vite → esbuild (transitiva).
+ * 1) chmod só em node_modules/esbuild/bin/esbuild
+ * 2) npm rebuild esbuild --force
+ * 3) npx esbuild --version
+ * 4) prisma generate
  */
 import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = process.cwd()
-
-const ESBUILD_LINUX_X64 = join(root, 'node_modules', '@esbuild', 'linux-x64', 'bin', 'esbuild')
 const ESBUILD_PACKAGE_BIN = join(root, 'node_modules', 'esbuild', 'bin', 'esbuild')
 
 function chmod755IfExists(label, absolutePath) {
@@ -29,10 +27,6 @@ function chmod755IfExists(label, absolutePath) {
   }
 }
 
-chmod755IfExists(
-  'node_modules/@esbuild/linux-x64/bin/esbuild',
-  ESBUILD_LINUX_X64,
-)
 chmod755IfExists('node_modules/esbuild/bin/esbuild', ESBUILD_PACKAGE_BIN)
 
 const rebuild = spawnSync('npm', ['rebuild', 'esbuild', '--force'], {
