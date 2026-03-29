@@ -1,4 +1,4 @@
-# Imagem única: build do Vite + servidor Express (tsx) — um processo serve / e /api.
+# Imagem única: build do Vite + tsc do servidor Express — um processo serve / e /api.
 # Build requer as mesmas variáveis do projeto (check-quick + Vite). Exemplo:
 #   docker build \
 #     --build-arg DATABASE_URL="postgresql://..." \

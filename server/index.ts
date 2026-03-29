@@ -1,18 +1,17 @@
 /**
  * API com Prisma — cursos, professores e alunos persistidos no Supabase/Postgres.
  * Em produção pode servir também o frontend (pasta dist/) no mesmo processo.
- * Inicie com: npm run server, npm start ou node server.js (produção).
+ * Inicie com: npm run server (dev/tsx), npm start ou node server.js (produção → dist-server).
  */
 import 'dotenv/config'
 
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
 import { Prisma, PrismaClient } from '@prisma/client'
-import type { Course, Student, Teacher } from '../src/domain/types'
+import type { Course, Student, Teacher } from '../src/domain/types.js'
 import {
   courseFromPrisma,
   courseToPrisma,
@@ -21,7 +20,7 @@ import {
   studentToPrisma,
   teacherFromPrisma,
   teacherToPrisma,
-} from './mappers'
+} from './mappers.js'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -77,8 +76,8 @@ const PORT = resolveListenPort()
 /** Sempre todas as interfaces — evita 503 se HOST/LISTEN_HOST estiverem errados no painel. */
 const LISTEN_HOST = '0.0.0.0' as const
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const distDir = join(__dirname, '../dist')
+/** `dist/` fica na raiz do projeto; em produção o código compilado vive em dist-server/server/. */
+const distDir = join(process.cwd(), 'dist')
 
 function resolveCorsOrigin(): boolean | string | RegExp | (string | RegExp)[] {
   const raw = process.env.ALLOWED_ORIGINS?.trim()

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
-import type { Course, Student, Teacher } from '../src/domain/types'
-import type { ScheduleMap } from '../src/domain/types'
+import type { Course, Student, Teacher } from '../src/domain/types.js'
+import type { ScheduleMap } from '../src/domain/types.js'
 
 export function courseToPrisma(c: Course): Prisma.CourseCreateInput {
   return {

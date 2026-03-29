@@ -12,8 +12,8 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Versão Node:** **20.x** (recomendado pelo suporte Hostinger para Node App).
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
-   - **Comando de construção / Build:** `npm run build` (só o Vite → pasta `dist/`; o `npm start` serve o `dist` no mesmo processo).
-   - **Ficheiro de entrada / Entry file:** se o painel **só aceitar `.js`**, usa **`server.js`** na raiz do projeto (wrapper que carrega `server/index.ts` via `tsx`). Se puderes deixar em branco, também serve — o **Start** é o que importa.
+   - **Comando de construção / Build:** `npm ci && npm run build` ou `npm run build` (Vite → `dist/` + **TypeScript** → `dist-server/`; o `npm start` corre JS compilado, **sem** `tsx`/esbuild em runtime).
+   - **Ficheiro de entrada / Entry file:** **`server.js`** na raiz (importa `./dist-server/server/index.js`). O build tem de correr **antes** do start para existir `dist-server/`.
    - **Comando de arranque / Start:** `npm start` (equivale a `node server.js`)
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
@@ -29,15 +29,19 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
 
 Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
-### `ERR_REQUIRE_ASYNC_MODULE` / `require() cannot be used on an ESM graph with top-level await`
+### `ERR_REQUIRE_ASYNC_MODULE`
 
-O launcher da Hostinger (`lsnode.js`) pode carregar o ficheiro de entrada com `require()`. O **`server.js`** do projeto **não usa top-level await** por isso: chama `register()` do `tsx` de forma síncrona e depois `import('./server/index.ts')`. Faz **push** desta versão e redeploy.
+O **`server.js`** não usa top-level await; importa só JS já compilado.
+
+### `TransformError` / `esbuild` / **`EACCES`**
+
+Em alojamento partilhado o binário nativo `@esbuild/linux-x64` pode ser **bloqueado** ao correr em runtime. Por isso o **`npm start` não usa `tsx`**: o build gera **`dist-server/`** com `tsc`; em produção corre-se **`node server.js`** (importa esse JS).
 
 ## O que o projeto já garante (para não precisares de mudar código)
 
-- `npm start` → `node server.js` → regista o `tsx` e importa `server/index.ts` (`tsx` está em `dependencies`).
-- **`server.js`** existe para painéis que obrigam **Entry file** em JavaScript; podes também correr localmente: `node server.js`.
-- `npm run build` → gera `dist/`; o Express serve `dist/` + rotas `/api` no **mesmo processo**.
+- `npm start` → `node server.js` → `./dist-server/server/index.js` (sem esbuild em runtime).
+- **`server.js`** na raiz para painéis que exigem **Entry file** `.js`.
+- `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `prisma generate` após `npm install`.
 - Escuta com `app.listen(PORT, '0.0.0.0')` — em **`NODE_ENV=production`** usa **apenas** `process.env.PORT` (injeta a plataforma); em dev, `PORT` / `SERVER_PORT` / `HTTP_PORT` ou `API_PORT` / `3333`.
 
