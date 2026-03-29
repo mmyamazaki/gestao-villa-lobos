@@ -16,11 +16,18 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Ficheiro de entrada / Entry file:** se o painel **só aceitar `.js`**, usa **`server.js`** na raiz do projeto (wrapper que carrega `server/index.ts` via `tsx`). Se puderes deixar em branco, também serve — o **Start** é o que importa.
    - **Comando de arranque / Start:** `npm start` (equivale a `node server.js`)
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
+   - `NODE_ENV=production`
+   - `HOST=0.0.0.0` — o Express precisa de ouvir em **todas** as interfaces; muitos painéis já fazem isto, mas definir evita 503 por processo a escutar só em `127.0.0.1`.
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`, `VITE_ADMIN_PASSWORD`
-   - Se o painel **injetar** `PORT`, não precisas duplicar; o `server/index.ts` já usa `process.env.PORT`
+   - **`PORT`** — muitos hosts **injeta** automaticamente; confirma nos logs de runtime a linha `listening on http://0.0.0.0:PORT`. Se o painel **não** definir `PORT`, adiciona manualmente a porta que o painel indica (ex.: a mesma do URL interno da app).
+   - Não uses `API_PORT` em produção no painel (é só para desenvolvimento local); em produção vale só `PORT`.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
+
+### Erro 503 no browser
+
+Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
 ## O que o projeto já garante (para não precisares de mudar código)
 
@@ -28,7 +35,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
 - **`server.js`** existe para painéis que obrigam **Entry file** em JavaScript; podes também correr localmente: `node server.js`.
 - `npm run build` → gera `dist/`; o Express serve `dist/` + rotas `/api` no **mesmo processo**.
 - `postinstall` → `prisma generate` após `npm install`.
-- Escuta em `process.env.PORT` (a Hostinger injeta); sem `PORT`, usa `3333` em desenvolvimento local.
+- Escuta em `process.env.PORT` (prioridade); em desenvolvimento, se `PORT` não existir, usa `API_PORT` ou `3333`. Endereço: `HOST` ou `LISTEN_HOST`, por defeito `0.0.0.0`.
 
 ## Se não aparecer “Node.js App” no teu plano
 

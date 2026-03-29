@@ -26,8 +26,32 @@ import {
 const prisma = new PrismaClient()
 const app = express()
 
-/** Em produção (ex.: Hostinger Node) use sempre `process.env.PORT`. Sem PORT, cai em 3333 (dev local). */
-const PORT = Number(process.env.PORT) || 3333
+const NODE_ENV = process.env.NODE_ENV ?? 'development'
+const isProduction = NODE_ENV === 'production'
+
+/** Porta: em PaaS (Hostinger, Render, etc.) use sempre `PORT`. `API_PORT` só em desenvolvimento local. */
+function resolveListenPort(): number {
+  const raw = process.env.PORT?.trim()
+  if (raw) {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return n
+    console.warn(`[api] PORT inválida (${raw}), ignorada.`)
+  } else if (isProduction) {
+    console.warn(
+      '[api] PORT não definida em produção — o proxy pode esperar outra porta (503). Defina PORT no painel ou variáveis de ambiente.',
+    )
+  }
+  if (!isProduction) {
+    const api = process.env.API_PORT?.trim()
+    if (api) {
+      const n = Number(api)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+  }
+  return 3333
+}
+
+const PORT = resolveListenPort()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = join(__dirname, '../dist')
@@ -421,10 +445,13 @@ if (existsSync(distDir)) {
   })
 }
 
-const LISTEN_HOST = process.env.LISTEN_HOST?.trim() || '0.0.0.0'
+/** Obrigatório em PaaS: todas as interfaces. `HOST` (comum em painéis) ou `LISTEN_HOST`. */
+const LISTEN_HOST =
+  process.env.HOST?.trim() || process.env.LISTEN_HOST?.trim() || '0.0.0.0'
 
 const server = app.listen(PORT, LISTEN_HOST, () => {
-  console.log(`[api] escutando em http://${LISTEN_HOST}:${PORT}`)
+  // Linha fácil de achar nos logs do host ("listening on" / escutando)
+  console.log(`[api] listening on http://${LISTEN_HOST}:${PORT} (escutando)`)
   if (existsSync(distDir)) {
     console.log(`[api] servindo frontend estático de ${distDir}`)
   }
