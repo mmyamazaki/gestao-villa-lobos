@@ -26,55 +26,9 @@ const prisma = new PrismaClient()
 const app = express()
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
-const isProduction = NODE_ENV === 'production'
 
-/**
- * Em produção (Hostinger, etc.): só `process.env.PORT` — a plataforma injeta; sem porta fixa nem fallback.
- * Em desenvolvimento: PORT / SERVER_PORT / HTTP_PORT, senão API_PORT ou 3333.
- */
-function resolveListenPort(): number {
-  if (isProduction) {
-    const raw = process.env.PORT?.trim()
-    if (!raw) {
-      console.error(
-        '[api] Em produção é obrigatório process.env.PORT (a plataforma deve injetar). Valor recebido: (vazio)',
-      )
-      process.exit(1)
-    }
-    const n = Number(raw)
-    if (!Number.isFinite(n) || n <= 0) {
-      console.error(`[api] PORT inválida em produção: ${raw}`)
-      process.exit(1)
-    }
-    return n
-  }
-  const candidates = [
-    process.env.PORT?.trim(),
-    process.env.SERVER_PORT?.trim(),
-    process.env.HTTP_PORT?.trim(),
-  ]
-  for (const raw of candidates) {
-    if (!raw) continue
-    const n = Number(raw)
-    if (Number.isFinite(n) && n > 0) return n
-    console.error(`[api] PORT inválida: ${raw}`)
-    process.exit(1)
-  }
-  console.warn(
-    '[api] PORT não definida (modo dev). Em Hostinger/preview o painel deve definir ou injetar PORT.',
-  )
-  const api = process.env.API_PORT?.trim()
-  if (api) {
-    const n = Number(api)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return 3333
-}
-
-const PORT = resolveListenPort()
-
-/** Sempre todas as interfaces — evita 503 se HOST/LISTEN_HOST estiverem errados no painel. */
-const LISTEN_HOST = '0.0.0.0' as const
+/** Padrão Node / Hostinger (Kodee): `process.env.PORT` com fallback 3000 */
+const port = Number(process.env.PORT || 3000)
 
 /** `dist/` fica na raiz do projeto; em produção o código compilado vive em dist-server/server/. */
 const distDir = join(process.cwd(), 'dist')
@@ -468,9 +422,9 @@ if (existsSync(distDir)) {
   })
 }
 
-const server = app.listen(PORT, LISTEN_HOST, () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(
-    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${LISTEN_HOST}:${PORT}`,
+    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://0.0.0.0:${port}`,
   )
   if (existsSync(distDir)) {
     console.log(`[api] servindo frontend estático de ${distDir}`)
@@ -480,7 +434,7 @@ const server = app.listen(PORT, LISTEN_HOST, () => {
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
     console.error(
-      `[api] Porta ${PORT} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
+      `[api] Porta ${port} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
     )
   } else {
     console.error('[api] Erro ao abrir o servidor:', err.message)
