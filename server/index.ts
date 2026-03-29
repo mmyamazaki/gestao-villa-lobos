@@ -1,7 +1,7 @@
 /**
  * API com Prisma — cursos, professores e alunos persistidos no Supabase/Postgres.
  * Em produção pode servir também o frontend (pasta dist/) no mesmo processo.
- * Inicie com: npm run server ou npm start (produção).
+ * Inicie com: npm run server, npm start ou node server.js (produção).
  */
 import 'dotenv/config'
 

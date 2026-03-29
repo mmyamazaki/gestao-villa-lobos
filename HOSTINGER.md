@@ -13,7 +13,8 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
    - **Comando de construção:** `npm run build`
-   - **Comando de arranque / Start:** `npm start`
+   - **Ficheiro de entrada / Entry file:** se o painel **só aceitar `.js`**, usa **`server.js`** na raiz do projeto (wrapper que carrega `server/index.ts` via `tsx`). Se puderes deixar em branco, também serve — o **Start** é o que importa.
+   - **Comando de arranque / Start:** `npm start` (equivale a `node server.js`)
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`, `VITE_ADMIN_PASSWORD`
@@ -23,7 +24,8 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
 
 ## O que o projeto já garante (para não precisares de mudar código)
 
-- `npm start` → `tsx server/index.ts` (`tsx` está em `dependencies`).
+- `npm start` → `node server.js` → regista o `tsx` e importa `server/index.ts` (`tsx` está em `dependencies`).
+- **`server.js`** existe para painéis que obrigam **Entry file** em JavaScript; podes também correr localmente: `node server.js`.
 - `npm run build` → gera `dist/`; o Express serve `dist/` + rotas `/api` no **mesmo processo**.
 - `postinstall` → `prisma generate` após `npm install`.
 - Escuta em `process.env.PORT` (a Hostinger injeta); sem `PORT`, usa `3333` em desenvolvimento local.

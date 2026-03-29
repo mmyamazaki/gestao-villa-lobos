@@ -16,7 +16,7 @@
     "server": "tsx server/index.ts",
     "build": "npx vite build",
     "postinstall": "prisma generate",
-    "start": "tsx server/index.ts",
+    "start": "node server.js",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
