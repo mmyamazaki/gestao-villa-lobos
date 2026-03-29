@@ -42,9 +42,10 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
-const p = Number.parseInt(process.env.API_PORT.trim(), 10)
+const apiPortRaw = process.env.API_PORT?.trim()
+const p = apiPortRaw ? Number.parseInt(apiPortRaw, 10) : NaN
 if (!Number.isFinite(p) || p < 1 || p > 65535) {
-  console.error('[check-quick] API_PORT inválida (use 1–65535).')
+  console.error('[check-quick] API_PORT ausente ou inválida (use 1–65535).')
   process.exit(1)
 }
 

@@ -1,0 +1,26 @@
+# Blueprint Render — um Web Service Node: build + npm start (API + dist no mesmo URL).
+# New → Blueprint → liga o repo e preenche os secrets no painel antes do deploy.
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    runtime: node
+    name: gestao-villa-lobos
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: API_PORT
+        value: "3333"
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_ADMIN_EMAIL
+        sync: false
+      - key: VITE_ADMIN_PASSWORD
+        sync: false

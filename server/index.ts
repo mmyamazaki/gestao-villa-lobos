@@ -26,8 +26,8 @@ import {
 const prisma = new PrismaClient()
 const app = express()
 
-/** Hostinger injeta PORT. Em local, `predev` costuma definir só API_PORT — usamos como fallback. */
-const PORT = Number(process.env.PORT) || Number(process.env.API_PORT) || 3333
+/** Em produção (ex.: Hostinger Node) use sempre `process.env.PORT`. Sem PORT, cai em 3333 (dev local). */
+const PORT = Number(process.env.PORT) || 3333
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = join(__dirname, '../dist')

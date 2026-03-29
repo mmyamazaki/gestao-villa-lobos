@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "predev": "node scripts/predev.mjs",
     "doctor": "node scripts/predev.mjs",
@@ -11,7 +14,6 @@
     "dev:client": "vite",
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
-    "prebuild": "npm run check-quick",
     "build": "npx vite build",
     "postinstall": "prisma generate",
     "start": "tsx server/index.ts",

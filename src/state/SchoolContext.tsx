@@ -32,6 +32,8 @@ import type {
   Teacher,
 } from '../domain/types'
 import type { ScheduleMap } from '../domain/types'
+import { isSupabaseConfigured } from '../integrations/supabase/client'
+import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
 import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout } from '../utils/fetchWithTimeout'
 import { ensureSchedule } from './schoolUtils'
@@ -464,6 +466,28 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     const genAtFetchStart = remoteCoursesMutationGen.current
 
     void (async () => {
+      const applyCore = (core: {
+        courses: Course[]
+        teachers: Teacher[]
+        students: Student[]
+      }) => {
+        if (cancelled) return
+        setState((prev) => {
+          const coreStale = remoteCoursesMutationGen.current !== genAtFetchStart
+          return reconcileTeacherSchedulesWithStudents(
+            normalizeState({
+              mensalidades: prev.mensalidades,
+              lessonLogs: prev.lessonLogs,
+              replacementClasses: prev.replacementClasses,
+              settings: prev.settings,
+              courses: coreStale ? prev.courses : core.courses,
+              teachers: core.teachers,
+              students: core.students,
+            }),
+          )
+        })
+      }
+
       try {
         const r = await fetchWithTimeout(apiUrl('/api/school/core'), { timeoutMs: 60_000 })
         const text = await r.text()
@@ -489,30 +513,35 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           throw new Error(looksLikeHtml ? '__NO_API__' : '__BAD_JSON__')
         }
 
-        if (cancelled) return
-        setState((prev) => {
-          const coreStale = remoteCoursesMutationGen.current !== genAtFetchStart
-          return reconcileTeacherSchedulesWithStudents(
-            normalizeState({
-              mensalidades: prev.mensalidades,
-              lessonLogs: prev.lessonLogs,
-              replacementClasses: prev.replacementClasses,
-              settings: prev.settings,
-              courses: coreStale ? prev.courses : core.courses,
-              teachers: core.teachers,
-              students: core.students,
-            }),
-          )
-        })
+        applyCore(core)
       } catch (e) {
+        console.warn('[SchoolProvider] GET /api/school/core falhou; tentando Supabase se configurado.', e)
+
+        if (isSupabaseConfigured()) {
+          try {
+            const core = await fetchSchoolCoreFromSupabase()
+            applyCore(core)
+            console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')
+            return
+          } catch (e2) {
+            console.error('[SchoolProvider] Fallback Supabase falhou', e2)
+            const msg = e instanceof Error ? e.message : String(e)
+            const msg2 = e2 instanceof Error ? e2.message : String(e2)
+            window.alert(
+              `Não foi possível carregar pelo servidor nem pelo Supabase.\n\nAPI: ${msg.slice(0, 220)}\n\nSupabase: ${msg2.slice(0, 280)}\n\nSe usa só site estático: no Supabase → SQL, ative SELECT para anon nas tabelas Course, Teacher, Student (ver prisma/sql/rls_anon_read_school_core.sql).`,
+            )
+            return
+          }
+        }
+
         console.error('[SchoolProvider] GET /api/school/core', e)
         const msg = e instanceof Error ? e.message : String(e)
 
         if (msg === '__NO_API__' || msg === '__BAD_JSON__') {
           window.alert(
             msg === '__BAD_JSON__'
-              ? 'A resposta em /api/school/core não é JSON válido. Se o site está só em hospedagem estática, não existe API: use Node na Hostinger (npm start após o build) ou defina VITE_API_BASE_URL para a URL da API e faça novo build.'
-              : 'O servidor devolveu HTML em vez da API (rota /api inexistente ou só ficheiros estáticos). Isto costuma acontecer quando o deploy só publica a pasta dist sem correr Node. Solução: hospedagem com Node.js e comando de arranque "npm start", ou API noutro domínio com VITE_API_BASE_URL no build.',
+              ? 'Resposta inválida em /api/school/core. Configure VITE_SUPABASE_* e políticas RLS (SELECT anon) em Course, Teacher e Student, ou use Node com npm start.'
+              : 'Rota /api inexistente (site estático). Configure Supabase no .env e políticas RLS para leitura, ou hospede Node com npm start.',
           )
           return
         }
