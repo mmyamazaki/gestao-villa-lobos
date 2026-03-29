@@ -29,6 +29,10 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
 
 Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
+### `ERR_REQUIRE_ASYNC_MODULE` / `require() cannot be used on an ESM graph with top-level await`
+
+O launcher da Hostinger (`lsnode.js`) pode carregar o ficheiro de entrada com `require()`. O **`server.js`** do projeto **não usa top-level await** por isso: chama `register()` do `tsx` de forma síncrona e depois `import('./server/index.ts')`. Faz **push** desta versão e redeploy.
+
 ## O que o projeto já garante (para não precisares de mudar código)
 
 - `npm start` → `node server.js` → regista o `tsx` e importa `server/index.ts` (`tsx` está em `dependencies`).
