@@ -30,11 +30,25 @@ const NODE_ENV = process.env.NODE_ENV ?? 'development'
 const isProduction = NODE_ENV === 'production'
 
 /**
- * Em PaaS (Hostinger, etc.) o proxy encaminha para a porta do ambiente.
- * Ordem: PORT → SERVER_PORT → HTTP_PORT; em produção sem nenhuma, fallback 3000 (como app.listen(PORT || 3000)).
- * Em dev local: API_PORT ou 3333.
+ * Em produção (Hostinger, etc.): só `process.env.PORT` — a plataforma injeta; sem porta fixa nem fallback.
+ * Em desenvolvimento: PORT / SERVER_PORT / HTTP_PORT, senão API_PORT ou 3333.
  */
 function resolveListenPort(): number {
+  if (isProduction) {
+    const raw = process.env.PORT?.trim()
+    if (!raw) {
+      console.error(
+        '[api] Em produção é obrigatório process.env.PORT (a plataforma deve injetar). Valor recebido: (vazio)',
+      )
+      process.exit(1)
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) {
+      console.error(`[api] PORT inválida em produção: ${raw}`)
+      process.exit(1)
+    }
+    return n
+  }
   const candidates = [
     process.env.PORT?.trim(),
     process.env.SERVER_PORT?.trim(),
@@ -46,13 +60,6 @@ function resolveListenPort(): number {
     if (Number.isFinite(n) && n > 0) return n
     console.error(`[api] PORT inválida: ${raw}`)
     process.exit(1)
-  }
-  if (isProduction) {
-    const fallback = 3000
-    console.warn(
-      `[api] Nenhuma de PORT/SERVER_PORT/HTTP_PORT definida em produção — a escutar em ${fallback}. Se o proxy usar outra, defina PORT no painel.`,
-    )
-    return fallback
   }
   console.warn(
     '[api] PORT não definida (modo dev). Em Hostinger/preview o painel deve definir ou injetar PORT.',
