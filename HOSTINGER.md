@@ -9,15 +9,15 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
 1. No hPanel, procura **Node.js** / **Aplicações Node.js** / **Criar aplicação**.
 2. Liga o **repositório Git** (ou envia o ficheiro ZIP do projeto).
 3. Define:
-   - **Versão Node:** **22.x** (ou 20 LTS se 22 não existir).
+   - **Versão Node:** **20.x** (recomendado pelo suporte Hostinger para Node App).
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
-   - **Comando de construção:** `npm run build`
+   - **Comando de construção / Build:** `npm run build` (só o Vite → pasta `dist/`; o `npm start` serve o `dist` no mesmo processo).
    - **Ficheiro de entrada / Entry file:** se o painel **só aceitar `.js`**, usa **`server.js`** na raiz do projeto (wrapper que carrega `server/index.ts` via `tsx`). Se puderes deixar em branco, também serve — o **Start** é o que importa.
    - **Comando de arranque / Start:** `npm start` (equivale a `node server.js`)
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
-   - `HOST=0.0.0.0` — o Express precisa de ouvir em **todas** as interfaces; muitos painéis já fazem isto, mas definir evita 503 por processo a escutar só em `127.0.0.1`.
+   - `HOST` no painel é **opcional** — o servidor fixa sempre `0.0.0.0` no código (recomendação do suporte: evitar 503 por bind em `127.0.0.1`).
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`, `VITE_ADMIN_PASSWORD`
    - **`PORT`** — muitos hosts **injeta** automaticamente; confirma nos logs de runtime a linha `listening on http://0.0.0.0:PORT`. Se o painel **não** definir `PORT`, adiciona manualmente a porta que o painel indica (ex.: a mesma do URL interno da app).
@@ -35,7 +35,7 @@ Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o p
 - **`server.js`** existe para painéis que obrigam **Entry file** em JavaScript; podes também correr localmente: `node server.js`.
 - `npm run build` → gera `dist/`; o Express serve `dist/` + rotas `/api` no **mesmo processo**.
 - `postinstall` → `prisma generate` após `npm install`.
-- Escuta em `process.env.PORT` (prioridade); em desenvolvimento, se `PORT` não existir, usa `API_PORT` ou `3333`. Endereço: `HOST` ou `LISTEN_HOST`, por defeito `0.0.0.0`.
+- Escuta com `app.listen(PORT, '0.0.0.0')` — `PORT` vem de `process.env.PORT` (em produção é obrigatória); em desenvolvimento local, se não houver `PORT`, usa `API_PORT` ou `3333`.
 
 ## Se não aparecer “Node.js App” no teu plano
 

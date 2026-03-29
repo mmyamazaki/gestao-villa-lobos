@@ -29,29 +29,39 @@ const app = express()
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
 const isProduction = NODE_ENV === 'production'
 
-/** Porta: em PaaS (Hostinger, Render, etc.) use sempre `PORT`. `API_PORT` só em desenvolvimento local. */
+/**
+ * Em PaaS (Hostinger, etc.) o proxy encaminha para `process.env.PORT` — não usar porta fixa.
+ * Em desenvolvimento local: `API_PORT` ou 3333 se `PORT` não existir.
+ */
 function resolveListenPort(): number {
   const raw = process.env.PORT?.trim()
   if (raw) {
     const n = Number(raw)
     if (Number.isFinite(n) && n > 0) return n
-    console.warn(`[api] PORT inválida (${raw}), ignorada.`)
-  } else if (isProduction) {
-    console.warn(
-      '[api] PORT não definida em produção — o proxy pode esperar outra porta (503). Defina PORT no painel ou variáveis de ambiente.',
-    )
+    console.error(`[api] PORT inválida: ${raw}`)
+    process.exit(1)
   }
-  if (!isProduction) {
-    const api = process.env.API_PORT?.trim()
-    if (api) {
-      const n = Number(api)
-      if (Number.isFinite(n) && n > 0) return n
-    }
+  if (isProduction) {
+    console.error(
+      '[api] PORT ausente em produção. O painel deve injetar PORT; sem ela o proxy devolve 503.',
+    )
+    process.exit(1)
+  }
+  console.warn(
+    '[api] PORT não definida (modo dev). Em Hostinger/preview o painel deve definir ou injetar PORT.',
+  )
+  const api = process.env.API_PORT?.trim()
+  if (api) {
+    const n = Number(api)
+    if (Number.isFinite(n) && n > 0) return n
   }
   return 3333
 }
 
 const PORT = resolveListenPort()
+
+/** Sempre todas as interfaces — evita 503 se HOST/LISTEN_HOST estiverem errados no painel. */
+const LISTEN_HOST = '0.0.0.0' as const
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = join(__dirname, '../dist')
@@ -444,10 +454,6 @@ if (existsSync(distDir)) {
     })
   })
 }
-
-/** Obrigatório em PaaS: todas as interfaces. `HOST` (comum em painéis) ou `LISTEN_HOST`. */
-const LISTEN_HOST =
-  process.env.HOST?.trim() || process.env.LISTEN_HOST?.trim() || '0.0.0.0'
 
 const server = app.listen(PORT, LISTEN_HOST, () => {
   // Linha fácil de achar nos logs do host ("listening on" / escutando)
