@@ -66,22 +66,27 @@ export function normalizeCourseFromClient(raw: unknown, index: number): Course {
 }
 
 export function teacherToPrisma(t: Teacher): Prisma.TeacherCreateInput {
+  const slugs = Array.isArray(t.instrumentSlugs) ? t.instrumentSlugs : []
+  const schedule =
+    t.schedule != null && typeof t.schedule === 'object' && !Array.isArray(t.schedule)
+      ? t.schedule
+      : {}
   return {
     id: t.id,
-    nome: t.nome,
-    dataNascimento: t.dataNascimento,
-    naturalidade: t.naturalidade,
-    filiacao: t.filiacao,
-    rg: t.rg,
-    cpf: t.cpf,
-    endereco: t.endereco,
-    contatos: t.contatos,
-    email: t.email,
-    celular: t.celular,
-    login: t.login,
-    senha: t.senha,
-    instrumentSlugs: [...t.instrumentSlugs],
-    schedule: t.schedule as Prisma.InputJsonValue,
+    nome: typeof t.nome === 'string' ? t.nome : '',
+    dataNascimento: typeof t.dataNascimento === 'string' ? t.dataNascimento : '',
+    naturalidade: typeof t.naturalidade === 'string' ? t.naturalidade : '',
+    filiacao: typeof t.filiacao === 'string' ? t.filiacao : '',
+    rg: typeof t.rg === 'string' ? t.rg : '',
+    cpf: typeof t.cpf === 'string' ? t.cpf : '',
+    endereco: typeof t.endereco === 'string' ? t.endereco : '',
+    contatos: typeof t.contatos === 'string' ? t.contatos : '',
+    email: typeof t.email === 'string' ? t.email : '',
+    celular: typeof t.celular === 'string' ? t.celular : '',
+    login: typeof t.login === 'string' ? t.login : '',
+    senha: typeof t.senha === 'string' ? t.senha : '',
+    instrumentSlugs: [...slugs],
+    schedule: schedule as Prisma.InputJsonValue,
   }
 }
 

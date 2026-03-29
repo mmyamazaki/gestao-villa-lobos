@@ -342,9 +342,19 @@ app.patch('/api/courses/:id', async (req: Request, res: Response) => {
 
 app.put('/api/teachers/:id', async (req: Request, res: Response) => {
   try {
-    const t = req.body as Teacher
-    if (req.params.id !== t.id) {
-      res.status(400).json({ error: 'ID inconsistente.' })
+    const rawBody = req.body
+    if (rawBody == null || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+      res.status(400).json({ error: 'Corpo da requisição inválido: esperado JSON do professor.' })
+      return
+    }
+    const t = rawBody as Teacher
+    const paramId = routeParamId(req.params.id)
+    if (!paramId || typeof t.id !== 'string' || !t.id.trim()) {
+      res.status(400).json({ error: 'ID do professor ausente ou inválido no corpo JSON.' })
+      return
+    }
+    if (paramId !== t.id) {
+      res.status(400).json({ error: 'ID inconsistente entre URL e corpo.' })
       return
     }
     const data = teacherToPrisma(t)
@@ -375,10 +385,57 @@ app.put('/api/teachers/:id', async (req: Request, res: Response) => {
   }
 })
 
+/** Remove o professor apenas se nenhum aluno tiver matrícula vinculada a ele. */
+async function handleTeacherDelete(req: Request, res: Response) {
+  try {
+    const id = (routeParamId(req.params.id) ?? '').trim()
+    if (!id) {
+      res.status(400).json({ error: 'ID do professor obrigatório.' })
+      return
+    }
+
+    const allStudents = await prisma.student.findMany({
+      select: { id: true, nome: true, enrollment: true },
+    })
+    const blocking = allStudents.filter((row) => {
+      const en = row.enrollment
+      if (en == null || typeof en !== 'object' || Array.isArray(en)) return false
+      return (en as { teacherId?: string }).teacherId === id
+    })
+    if (blocking.length > 0) {
+      const lista = blocking.map((s) => s.nome || s.id).join(', ')
+      res.status(400).json({
+        error:
+          `Existem ${blocking.length} aluno(s) matriculado(s) com este professor. ` +
+          `Transfira cada um para outro professor e horários na aba Alunos (editar matrícula) antes de excluir. ` +
+          `Alunos: ${lista}.`,
+      })
+      return
+    }
+
+    const del = await prisma.teacher.deleteMany({ where: { id } })
+    if (del.count === 0) {
+      res.status(404).json({ error: 'Professor não encontrado.' })
+      return
+    }
+
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[DELETE/POST teacher]', e)
+    if (res.headersSent) return
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao excluir professor' })
+  }
+}
+
+app.delete('/api/teachers/:id', handleTeacherDelete)
+/** Alguns proxies só encaminham GET/POST; o cliente usa esta rota como principal. */
+app.post('/api/teachers/:id/delete', handleTeacherDelete)
+
 app.put('/api/students/:id', async (req: Request, res: Response) => {
   try {
     const s = req.body as Student
-    if (req.params.id !== s.id) {
+    const paramId = routeParamId(req.params.id)
+    if (!paramId || paramId !== s.id) {
       res.status(400).json({ error: 'ID inconsistente.' })
       return
     }

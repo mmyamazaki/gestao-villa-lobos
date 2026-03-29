@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { calcAgeYears } from '../domain/age'
 import { allSlotLabels, canStart60MinuteLesson, formatSlotKeyLabel, slotKey } from '../domain/schedule'
+import { studentNeedsTeacherReassignment } from '../domain/studentStatus'
 import type { Student } from '../domain/types'
 import { useSchool } from '../state/SchoolContext'
 
@@ -24,6 +25,16 @@ export function Alunos() {
   const [replacementDuration, setReplacementDuration] = useState<30 | 60>(30)
 
   const today = new Date().toISOString().slice(0, 10)
+
+  const sortedStudents = useMemo(() => {
+    const teachers = state.teachers
+    const pri = (s: Student) => (studentNeedsTeacherReassignment(s, teachers) ? 0 : 1)
+    return [...state.students].sort((a, b) => {
+      const d = pri(a) - pri(b)
+      if (d !== 0) return d
+      return a.nome.localeCompare(b.nome, 'pt-BR')
+    })
+  }, [state.students, state.teachers])
 
   const openCancelModal = (s: Student) => {
     setCancelModal(s)
@@ -139,7 +150,8 @@ export function Alunos() {
           <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Alunos</h2>
           <p className="mt-1 text-sm text-slate-600">
             Matrículas integradas à grade dos professores e ao financeiro. Use o status para
-            cancelamento formal (com data e observações).
+            cancelamento formal (com data e observações). Matrículas incompletas (sem professor válido ou
+            horário) aparecem primeiro com aviso em âmbar — conclua em Editar matrícula.
           </p>
         </div>
         <div className="shrink-0 sm:pt-0.5">
@@ -159,13 +171,17 @@ export function Alunos() {
             Nenhum aluno cadastrado.
           </div>
         )}
-        {state.students.map((s) => {
+        {sortedStudents.map((s) => {
           const age = calcAgeYears(s.dataNascimento)
           const en = s.enrollment
           const course = en ? getCourse(en.courseId) : undefined
-          const teacher = en ? getTeacher(en.teacherId) : undefined
+          const teacher = en?.teacherId ? getTeacher(en.teacherId) : undefined
+          const needsProfessor = studentNeedsTeacherReassignment(s, state.teachers)
           return (
-            <article key={`mobile-${s.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <article
+              key={`mobile-${s.id}`}
+              className={`rounded-xl border bg-white p-4 shadow-sm ${needsProfessor ? 'border-amber-300 ring-1 ring-amber-200/80' : 'border-slate-200'}`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold text-slate-900">{s.nome}</h3>
@@ -178,12 +194,20 @@ export function Alunos() {
                 </span>
               </div>
               <div className="mt-3 space-y-1.5 text-sm text-slate-700">
+                {needsProfessor && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs font-medium text-amber-950">
+                    Designe um novo professor e horários: abra Editar matrícula e conclua curso, professor,
+                    modalidade e grade.
+                  </p>
+                )}
                 <p>Idade: {age !== null ? `${age}` : '—'}</p>
                 <p>
                   Curso/Professor:{' '}
                   {course && teacher
                     ? `${course.instrumentLabel} - ${course.levelLabel} · ${teacher.nome}`
-                    : '—'}
+                    : course
+                      ? `${course.instrumentLabel} - ${course.levelLabel} · sem professor`
+                      : '—'}
                 </p>
                 <p className="text-xs text-slate-600">
                   Horários: {en?.slotKeys?.length ? en.slotKeys.map((k) => formatSlotKeyLabel(k)).join('; ') : '—'}
@@ -248,13 +272,17 @@ export function Alunos() {
                 </td>
               </tr>
             )}
-            {state.students.map((s) => {
+            {sortedStudents.map((s) => {
               const age = calcAgeYears(s.dataNascimento)
               const en = s.enrollment
               const course = en ? getCourse(en.courseId) : undefined
-              const teacher = en ? getTeacher(en.teacherId) : undefined
+              const teacher = en?.teacherId ? getTeacher(en.teacherId) : undefined
+              const needsProfessor = studentNeedsTeacherReassignment(s, state.teachers)
               return (
-                <tr key={s.id} className="hover:bg-slate-50/80">
+                <tr
+                  key={s.id}
+                  className={`hover:bg-slate-50/80 ${needsProfessor ? 'bg-amber-50/60' : ''}`}
+                >
                   <td className="px-4 py-3 font-medium text-slate-900">{s.nome}</td>
                   <td className="px-4 py-3 tabular-nums text-slate-600">{s.codigo}</td>
                   <td className="px-4 py-3">
@@ -271,14 +299,27 @@ export function Alunos() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{age !== null ? `${age}` : '—'}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {course && teacher
-                      ? `${course.instrumentLabel} - ${course.levelLabel} · ${teacher.nome}`
-                      : '—'}
+                    <div className="space-y-1">
+                      {needsProfessor && (
+                        <p className="text-[11px] font-medium leading-snug text-amber-900">
+                          Designar novo professor e horários (editar matrícula).
+                        </p>
+                      )}
+                      <span>
+                        {course && teacher
+                          ? `${course.instrumentLabel} - ${course.levelLabel} · ${teacher.nome}`
+                          : course
+                            ? `${course.instrumentLabel} - ${course.levelLabel} · sem professor`
+                            : '—'}
+                      </span>
+                    </div>
                   </td>
                   <td className="max-w-[220px] px-4 py-3 text-xs text-slate-600">
                     {en?.slotKeys?.length
                       ? en.slotKeys.map((k) => formatSlotKeyLabel(k)).join('; ')
-                      : '—'}
+                      : needsProfessor
+                        ? '— (definir na matrícula)'
+                        : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-end">

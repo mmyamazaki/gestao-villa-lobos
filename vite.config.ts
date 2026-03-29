@@ -27,6 +27,9 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
+          /** Evita proxy pendurado se a API não responder (padrão pode ser indefinido). */
+          timeout: 120_000,
+          proxyTimeout: 120_000,
         },
       },
     },

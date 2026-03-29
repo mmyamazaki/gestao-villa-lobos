@@ -16,6 +16,7 @@ import {
   valid60MinuteStartSlotIndices,
 } from '../domain/schedule'
 import { generateStudentCode, isValidStudentCode } from '../domain/studentCode'
+import { studentNeedsTeacherReassignment } from '../domain/studentStatus'
 import type { LessonMode, Responsible, ScheduleMap, Student } from '../domain/types'
 import type { SchoolContextValue } from '../state/SchoolContext'
 import { FormActions } from '../components/FormActions'
@@ -611,6 +612,20 @@ function MatriculaInner({
           grade do professor.
         </p>
       </div>
+
+      {mode === 'edit' && studentNeedsTeacherReassignment(draft, state.teachers) && (
+        <div
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-medium">Professor e horários precisam ser definidos de novo</p>
+          <p className="mt-1 text-amber-900/95">
+            Este aluno está sem professor válido na matrícula. Escolha um
+            professor disponível para o curso, a modalidade e os horários na grade abaixo; em seguida
+            salve.
+          </p>
+        </div>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-base font-semibold text-slate-900">Identificação do aluno</h3>

@@ -34,8 +34,9 @@ import type {
 import type { ScheduleMap } from '../domain/types'
 import { isSupabaseConfigured } from '../integrations/supabase/client'
 import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
+import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/teacherSupabase'
 import { apiUrl } from '../utils/apiBase'
-import { fetchWithTimeout } from '../utils/fetchWithTimeout'
+import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
 import { ensureSchedule } from './schoolUtils'
 
 /** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
@@ -414,6 +415,8 @@ export type SchoolContextValue = {
   updateInstrumentLabel: (instrument: string, newLabel: string) => Promise<void>
   saveSettings: (settings: SchoolSettings) => void
   saveTeacher: (draft: Teacher) => Promise<void>
+  /** Exclui o professor no servidor e desvincula alunos (curso mantido; professor e horários a redistribuir). */
+  deleteTeacher: (teacherId: string) => Promise<void>
   saveStudent: (draft: Student) => Promise<{ ok: true } | { ok: false; message: string }>
   registerMensalidadePayment: (mensalidadeId: string, paidDate: string) => void
   saveLessonLog: (payload: {
@@ -700,14 +703,37 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const saveTeacher = useCallback(async (draft: Teacher) => {
     const savedRow: Teacher = { ...draft, schedule: { ...draft.schedule } }
-    const res = await fetch(apiUrl(`/api/teachers/${encodeURIComponent(savedRow.id)}`), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(savedRow),
-    })
-    if (!res.ok) {
-      const t = await res.text()
-      throw new Error(t || 'Falha ao salvar professor no servidor.')
+    let body: string
+    try {
+      body = JSON.stringify(savedRow)
+    } catch {
+      throw new Error('Não foi possível serializar o cadastro do professor. Recarregue a página e tente de novo.')
+    }
+    try {
+      const res = await fetchWithTimeout(apiUrl(`/api/teachers/${encodeURIComponent(savedRow.id)}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        timeoutMs: 90_000,
+      })
+      const text = await readResponseTextWithTimeout(res, 30_000)
+      if (!res.ok) {
+        let msg = text || 'Falha ao salvar professor no servidor.'
+        try {
+          const j = JSON.parse(text) as { error?: string }
+          if (j.error) msg = j.error
+        } catch {
+          /* texto bruto */
+        }
+        throw new Error(msg)
+      }
+    } catch (e) {
+      /** GET /api/school/core pode ter carregado dados via Supabase sem API Node; PUT falha na rede → grava no Supabase. */
+      if (isLikelyNetworkFailure(e) && isSupabaseConfigured()) {
+        await upsertTeacherInSupabase(savedRow)
+      } else {
+        throw e instanceof Error ? e : new Error(String(e))
+      }
     }
     setState((prev) => {
       const exists = prev.teachers.some((t) => t.id === savedRow.id)
@@ -716,7 +742,35 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         : [...prev.teachers, savedRow]
       const saved = teachers.find((t) => t.id === savedRow.id)!
       const students = resyncStudentsAfterTeacherSave(prev.students, saved)
-      return { ...prev, teachers, students }
+      const next: SchoolState = { ...prev, teachers, students }
+      return reconcileTeacherSchedulesWithStudents(next)
+    })
+  }, [])
+
+  const deleteTeacher = useCallback(async (teacherId: string) => {
+    /** POST evita proxies que bloqueiam DELETE; resposta deve ser JSON `{ ok: true }` (não HTML do SPA). */
+    const res = await fetchWithTimeout(apiUrl(`/api/teachers/${encodeURIComponent(teacherId)}/delete`), {
+      method: 'POST',
+      timeoutMs: 60_000,
+    })
+    const text = await readResponseTextWithTimeout(res, 30_000)
+    let data: { ok?: boolean; error?: string }
+    try {
+      data = JSON.parse(text) as { ok?: boolean; error?: string }
+    } catch {
+      throw new Error(
+        'Resposta inválida do servidor ao excluir professor. Confirme se a API está atualizada (npm run build) e se o Node está a servir /api.',
+      )
+    }
+    if (!res.ok) {
+      throw new Error(data.error || text || 'Falha ao excluir professor no servidor.')
+    }
+    if (!data.ok) {
+      throw new Error(data.error || 'O servidor não confirmou a exclusão do professor.')
+    }
+    setState((prev) => {
+      const teachers = prev.teachers.filter((t) => t.id !== teacherId)
+      return reconcileTeacherSchedulesWithStudents({ ...prev, teachers })
     })
   }, [])
 
@@ -729,21 +783,32 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     const nextStudent = r.state.students.find((s) => s.id === draft.id)
     if (!nextStudent) return { ok: false as const, message: 'Erro ao preparar aluno.' }
     try {
-      const res = await fetch(apiUrl(`/api/students/${encodeURIComponent(nextStudent.id)}`), {
+      const res = await fetchWithTimeout(apiUrl(`/api/students/${encodeURIComponent(nextStudent.id)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextStudent),
+        timeoutMs: 90_000,
       })
+      const bodyText = await res.text()
       if (!res.ok) {
-        const t = await res.text()
-        throw new Error(t)
+        let msg = bodyText || `HTTP ${res.status}`
+        try {
+          const j = JSON.parse(bodyText) as { error?: string }
+          if (j.error) msg = j.error
+        } catch {
+          /* texto bruto */
+        }
+        throw new Error(msg)
       }
       setState(r.state)
       return { ok: true as const }
-    } catch {
+    } catch (e) {
       return {
         ok: false as const,
-        message: 'Erro ao salvar aluno no servidor. Verifique a API e o banco de dados.',
+        message:
+          e instanceof Error && e.message
+            ? e.message
+            : 'Erro ao salvar aluno no servidor. Verifique a API e o banco de dados.',
       }
     }
   }, [])
@@ -937,6 +1002,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       updateInstrumentLabel,
       saveSettings,
       saveTeacher,
+      deleteTeacher,
       saveStudent,
       registerMensalidadePayment,
       saveLessonLog,
@@ -954,6 +1020,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       updateInstrumentLabel,
       saveSettings,
       saveTeacher,
+      deleteTeacher,
       saveStudent,
       registerMensalidadePayment,
       saveLessonLog,

@@ -1,5 +1,18 @@
 import type { Student } from './types'
 
+/** Aluno ativo com matrícula (curso) mas sem professor correspondente na base (dados incompletos ou legado). */
+export function studentNeedsTeacherReassignment(
+  student: Student,
+  teachers: { id: string }[],
+): boolean {
+  const en = student.enrollment
+  if (!en) return false
+  if (student.status !== 'ativo') return false
+  const tid = typeof en.teacherId === 'string' ? en.teacherId.trim() : ''
+  if (!tid) return true
+  return !teachers.some((t) => t.id === tid)
+}
+
 /** Data ISO YYYY-MM-DD (comparação lexicográfica segura). */
 export function isoDateOnly(s: string | undefined): string | undefined {
   if (!s || typeof s !== 'string') return undefined

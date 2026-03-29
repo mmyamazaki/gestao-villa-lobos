@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Course } from '../domain/types'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, type NavigateFunction } from 'react-router-dom'
 import { calcAgeYears } from '../domain/age'
 import { createEmptySchedule, mergeSixtyMinuteSlotPairsForTeacher } from '../domain/schedule'
 import type { ScheduleMap, SlotState, Student, Teacher } from '../domain/types'
+import { DeleteTeacherDialog } from '../components/DeleteTeacherDialog'
 import { FormActions } from '../components/FormActions'
 import { ScheduleGrid, ScheduleLegend } from '../components/ScheduleGrid'
 import { useSchool } from '../state/SchoolContext'
@@ -18,6 +19,7 @@ import {
   onlyDigits,
 } from '../utils/brMasks'
 import { ensureSchedule } from '../state/schoolUtils'
+import { teacherDeleteBlockedAlertLines } from '../utils/teacherDeleteBlockedMessage'
 
 function cloneTeacher(t: Teacher): Teacher {
   return {
@@ -48,9 +50,22 @@ function emptyTeacher(id: string): Teacher {
 }
 
 export function ProfessorForm() {
-  const { id } = useParams()
+  const { id: idParam } = useParams()
+  /** URL pode trazer segmentos codificados; ids de professor são UUID comparados como string. */
+  const id =
+    idParam == null || idParam === ''
+      ? null
+      : idParam === 'novo'
+        ? 'novo'
+        : (() => {
+            try {
+              return decodeURIComponent(idParam)
+            } catch {
+              return idParam
+            }
+          })()
   const navigate = useNavigate()
-  const { state, saveTeacher } = useSchool()
+  const { state, saveTeacher, deleteTeacher } = useSchool()
   const students = state.students
   const [novoId] = useState(() => crypto.randomUUID())
 
@@ -70,6 +85,8 @@ export function ProfessorForm() {
       onCancelNavigate={() => navigate('/professores')}
       onDone={() => navigate('/professores')}
       saveTeacher={saveTeacher}
+      deleteTeacher={deleteTeacher}
+      navigate={navigate}
       courses={state.courses}
       allTeachers={state.teachers}
       students={students}
@@ -83,6 +100,8 @@ function ProfessorFormInner({
   onCancelNavigate,
   onDone,
   saveTeacher,
+  deleteTeacher,
+  navigate,
   courses,
   allTeachers,
   students,
@@ -91,7 +110,9 @@ function ProfessorFormInner({
   baseline: Teacher
   onCancelNavigate: () => void
   onDone: () => void
-  saveTeacher: (t: Teacher) => void
+  saveTeacher: (t: Teacher) => Promise<void>
+  deleteTeacher: (teacherId: string) => Promise<void>
+  navigate: NavigateFunction
   courses: Course[]
   allTeachers: Teacher[]
   students: Student[]
@@ -100,6 +121,13 @@ function ProfessorFormInner({
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [isDeletingTeacher, setIsDeletingTeacher] = useState(false)
+  const saveInFlightRef = useRef(false)
+
+  useEffect(() => {
+    saveInFlightRef.current = false
+  }, [baseline.id])
 
   const fieldClass = (name: string) =>
     [
@@ -113,6 +141,26 @@ function ProfessorFormInner({
     () => mergeSixtyMinuteSlotPairsForTeacher(students, draft.id),
     [students, draft.id],
   )
+
+  const studentsAffectedByDelete = useMemo(
+    () => students.filter((s) => s.enrollment?.teacherId === baseline.id),
+    [students, baseline.id],
+  )
+
+  const runDeleteTeacher = () => {
+    setIsDeletingTeacher(true)
+    void (async () => {
+      try {
+        await deleteTeacher(baseline.id)
+        setDeleteOpen(false)
+        navigate('/professores', { replace: true })
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : 'Não foi possível excluir o professor.')
+      } finally {
+        setIsDeletingTeacher(false)
+      }
+    })()
+  }
 
   const instrumentOptions = useMemo(() => {
     const map = new Map<string, string>()
@@ -366,6 +414,33 @@ function ProfessorFormInner({
         />
       </section>
 
+      {mode === 'edit' && (
+        <section
+          className="rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-4 sm:px-6"
+          aria-label="Zona de exclusão do cadastro"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-rose-950">
+              <strong>Excluir professor</strong> remove o cadastro e a grade. Só é permitido se nenhum aluno
+              estiver matriculado com ele — caso contrário, transfira os alunos na aba Alunos antes.
+            </p>
+            <button
+              type="button"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50"
+              onClick={() => {
+                if (studentsAffectedByDelete.length > 0) {
+                  window.alert(teacherDeleteBlockedAlertLines(studentsAffectedByDelete))
+                  return
+                }
+                setDeleteOpen(true)
+              }}
+            >
+              Excluir professor…
+            </button>
+          </div>
+        </section>
+      )}
+
       <FormActions
         cancelLabel="Cancelar"
         saveLabel="Salvar"
@@ -377,6 +452,11 @@ function ProfessorFormInner({
         }}
         isSaving={isSaving}
         onSave={async () => {
+          if (isSaving) return
+          if (saveInFlightRef.current) {
+            window.alert('Aguarde o salvamento atual terminar.')
+            return
+          }
           const nextFieldErrors: Record<string, string> = {}
           setFormError(null)
           if (courses.length === 0 || instrumentOptions.length === 0) {
@@ -423,6 +503,7 @@ function ProfessorFormInner({
             return
           }
 
+          saveInFlightRef.current = true
           try {
             setIsSaving(true)
             await saveTeacher({
@@ -433,14 +514,26 @@ function ProfessorFormInner({
             })
             setFieldErrors({})
             onDone()
-          } catch {
-            const msg = 'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios.'
+          } catch (e) {
+            const msg =
+              e instanceof Error && e.message
+                ? e.message
+                : 'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios.'
             setFormError(msg)
             window.alert(msg)
           } finally {
             setIsSaving(false)
+            saveInFlightRef.current = false
           }
         }}
+      />
+
+      <DeleteTeacherDialog
+        open={deleteOpen}
+        teacherNome={baseline.nome || 'Professor sem nome'}
+        isDeleting={isDeletingTeacher}
+        onCancel={() => !isDeletingTeacher && setDeleteOpen(false)}
+        onConfirm={runDeleteTeacher}
       />
     </div>
   )
