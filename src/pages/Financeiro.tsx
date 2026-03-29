@@ -173,17 +173,31 @@ export function Financeiro() {
             ))}
           </div>
 
-          <div className="mt-4 hidden overflow-x-auto rounded-lg border border-indigo-100 bg-white md:block">
-            <table className="min-w-[760px] w-full text-left text-sm">
-              <thead className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-semibold uppercase tracking-wide text-indigo-900/70">
+          <div className="mt-4 hidden max-h-[min(60vh,520px)] overflow-auto rounded-lg border border-indigo-100 bg-white md:block">
+            <table className="min-w-[760px] w-full border-separate border-spacing-0 text-left text-sm">
+              <thead className="text-xs font-semibold uppercase tracking-wide text-indigo-900/70">
                 <tr>
-                  <th className="px-3 py-2">Aluno</th>
-                  <th className="px-3 py-2">Curso</th>
-                  <th className="px-3 py-2">Parcela</th>
-                  <th className="px-3 py-2">Ref.</th>
-                  <th className="px-3 py-2">Venc.</th>
-                  <th className="px-3 py-2 text-right">Líquido</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[4px_0_10px_-4px_rgba(30,27,75,0.18)]">
+                    Aluno
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Curso
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Parcela
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Ref.
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Venc.
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 text-right shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Líquido
+                  </th>
+                  <th className="sticky top-0 z-20 whitespace-nowrap border-b border-indigo-100 bg-indigo-50 px-3 py-2 shadow-[0_1px_0_0_rgb(199,210,254)]">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-indigo-50">
@@ -195,14 +209,26 @@ export function Financeiro() {
                   </tr>
                 )}
                 {quickRows.map((m) => (
-                  <tr key={`quick-${m.id}`} className="hover:bg-indigo-50/40">
-                    <td className="px-3 py-2 font-medium text-slate-900">{m.studentNome}</td>
-                    <td className="px-3 py-2 text-slate-600">{m.courseLabel}</td>
-                    <td className="px-3 py-2 tabular-nums text-slate-600">{m.parcelNumber}/12</td>
-                    <td className="px-3 py-2 tabular-nums text-slate-600">{m.referenceMonth}</td>
-                    <td className="px-3 py-2 tabular-nums text-slate-700">{m.dueDate}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">R$ {m.liquidAmount.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-xs font-semibold text-amber-800">Pendente</td>
+                  <tr key={`quick-${m.id}`} className="group hover:bg-indigo-50/40">
+                    <td className="sticky left-0 z-10 max-w-[200px] border-b border-indigo-50/80 bg-white px-3 py-2 font-medium text-slate-900 shadow-[4px_0_10px_-4px_rgba(30,27,75,0.12)] group-hover:bg-indigo-50">
+                      {m.studentNome}
+                    </td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 text-slate-600">{m.courseLabel}</td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 tabular-nums text-slate-600">
+                      {m.parcelNumber}/12
+                    </td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 tabular-nums text-slate-600">
+                      {m.referenceMonth}
+                    </td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 tabular-nums text-slate-700">
+                      {m.dueDate}
+                    </td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 text-right tabular-nums">
+                      R$ {m.liquidAmount.toFixed(2)}
+                    </td>
+                    <td className="border-b border-indigo-50/80 px-3 py-2 text-xs font-semibold text-amber-800">
+                      Pendente
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -380,27 +406,55 @@ export function Financeiro() {
           ))}
         </div>
 
-        <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
-          <table className="min-w-[1100px] w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="hidden max-h-[min(70vh,640px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+          <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-left text-sm">
+            <thead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-2 py-3">Parc.</th>
-                <th className="px-2 py-3">Curso</th>
-                <th className="px-2 py-3">Ref.</th>
-                <th className="px-2 py-3">Venc.</th>
-                <th className="px-2 py-3 text-right">Base</th>
-                <th className="px-2 py-3 text-right">Desc. %</th>
-                <th className="px-2 py-3 text-right">Desc. R$</th>
-                <th className="px-2 py-3 text-right">Líquido</th>
-                <th className="px-2 py-3 text-right">Atraso</th>
-                <th className="px-2 py-3 text-right">Multa</th>
-                <th className="px-2 py-3 text-right">Juros</th>
-                <th className="px-2 py-3 text-right">Total</th>
-                <th className="px-2 py-3">Situação</th>
-                <th className="px-2 py-3">Pagamento</th>
+                <th className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[4px_0_10px_-4px_rgba(15,23,42,0.14)]">
+                  Parc.
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Curso
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Ref.
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Venc.
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Base
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Desc. %
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Desc. R$
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Líquido
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Atraso
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Multa
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Juros
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 text-right shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Total
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Situação
+                </th>
+                <th className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 shadow-[0_1px_0_0_rgb(226,232,240)]">
+                  Pagamento
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={14} className="px-3 py-8 text-center text-slate-500">
@@ -409,33 +463,49 @@ export function Financeiro() {
                 </tr>
               )}
               {rows.map(({ m, late, fees, discAmount }) => (
-                <tr key={m.id} className="hover:bg-slate-50/80">
-                  <td className="px-2 py-3 tabular-nums font-medium text-slate-900">
+                <tr key={m.id} className="group hover:bg-slate-50/80">
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b border-slate-100 bg-white px-2 py-3 tabular-nums font-medium text-slate-900 shadow-[4px_0_10px_-4px_rgba(15,23,42,0.12)] group-hover:bg-slate-50">
                     {m.parcelNumber}/12
                   </td>
-                  <td className="max-w-[120px] px-2 py-3 text-slate-600">{m.courseLabel}</td>
-                  <td className="px-2 py-3 tabular-nums text-slate-600">{m.referenceMonth}</td>
-                  <td className="px-2 py-3 tabular-nums text-slate-600">{m.dueDate}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">R$ {m.baseAmount.toFixed(2)}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">{m.discountPercent}%</td>
-                  <td className="px-2 py-3 text-right tabular-nums text-slate-600">
+                  <td className="max-w-[120px] border-b border-slate-100 px-2 py-3 text-slate-600">
+                    {m.courseLabel}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 tabular-nums text-slate-600">
+                    {m.referenceMonth}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 tabular-nums text-slate-600">
+                    {m.dueDate}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
+                    R$ {m.baseAmount.toFixed(2)}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
+                    {m.discountPercent}%
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums text-slate-600">
                     R$ {discAmount.toFixed(2)}
                   </td>
-                  <td className="px-2 py-3 text-right tabular-nums">R$ {m.liquidAmount.toFixed(2)}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">{late}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">R$ {fees.fine.toFixed(2)}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">R$ {fees.interest.toFixed(2)}</td>
-                  <td className="px-2 py-3 text-right font-medium tabular-nums text-slate-900">
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
+                    R$ {m.liquidAmount.toFixed(2)}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">{late}</td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
+                    R$ {fees.fine.toFixed(2)}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
+                    R$ {fees.interest.toFixed(2)}
+                  </td>
+                  <td className="border-b border-slate-100 px-2 py-3 text-right font-medium tabular-nums text-slate-900">
                     {m.status === 'cancelado' ? '—' : `R$ ${fees.total.toFixed(2)}`}
                   </td>
-                  <td className="px-2 py-3 text-xs font-medium text-slate-700">
+                  <td className="border-b border-slate-100 px-2 py-3 text-xs font-medium text-slate-700">
                     {m.status === 'cancelado'
                       ? 'Cancelada'
                       : m.paidAt
                         ? 'Paga'
                         : 'Pendente'}
                   </td>
-                  <td className="px-2 py-3">
+                  <td className="border-b border-slate-100 px-2 py-3">
                     {m.status === 'cancelado' ? (
                       <span className="text-xs text-slate-500">—</span>
                     ) : m.paidAt ? (
