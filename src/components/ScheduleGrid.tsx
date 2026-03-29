@@ -33,13 +33,13 @@ type Props = {
   ) => void
 }
 
-/** Cores base da grade — indisponível: vermelho suave (bloqueio), sem confundir com erro de formulário */
+/** Cores base da grade — indisponível: vermelho visível (bloqueio) */
 function cellClasses(cell: SlotState, mode: Props['mode']) {
   if (cell.status === 'busy') {
     return 'bg-indigo-100 ring-1 ring-indigo-200'
   }
   if (cell.status === 'unavailable') {
-    return 'bg-rose-100/90 text-rose-950 ring-1 ring-rose-200/90'
+    return 'bg-red-100 text-red-950 ring-1 ring-red-300'
   }
   return mode === 'pick'
     ? 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200 hover:bg-emerald-200'
@@ -72,7 +72,7 @@ export function ScheduleLegend() {
         Livre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-rose-200/90 ring-1 ring-rose-300" />
+        <span className="h-3 w-6 rounded bg-red-200 ring-1 ring-red-400" />
         Indisponível
       </span>
       <span className="inline-flex items-center gap-2">
@@ -193,7 +193,7 @@ export function ScheduleGrid({
                     >
                       {displayCell.status === 'busy' ? (
                         <span className="flex w-full flex-col items-center justify-center gap-0.5 leading-tight">
-                          <span className="block max-w-full text-center text-sm font-bold leading-snug text-slate-900">
+                          <span className="block max-w-full text-center text-sm font-bold leading-snug text-black">
                             {displayCell.studentName}
                           </span>
                           {transient ? (
@@ -201,7 +201,7 @@ export function ScheduleGrid({
                               Reposição
                             </span>
                           ) : displayCell.instrumentLabel ? (
-                            <span className="block max-w-full text-center text-[11px] font-bold leading-tight text-blue-950">
+                            <span className="block max-w-full text-center text-[11px] font-bold leading-tight text-black">
                               {displayCell.instrumentLabel}
                             </span>
                           ) : null}
