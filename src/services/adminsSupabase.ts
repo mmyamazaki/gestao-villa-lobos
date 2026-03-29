@@ -47,6 +47,54 @@ export async function createAdminInSupabase(payload: {
   return { ok: true }
 }
 
+export async function updateAdminInSupabase(
+  admin: AdminListItem,
+  payload: { name: string; email: string; password: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: 'Supabase não configurado.' }
+  const name = payload.name.trim()
+  const email = payload.email.trim().toLowerCase()
+  if (!name || !email) return { ok: false, error: 'E-mail e nome são obrigatórios.' }
+
+  const primary = getPrimaryAdminEmailLower()
+  const wasPrimary = admin.email.trim().toLowerCase() === primary
+  if (wasPrimary && email !== admin.email.trim().toLowerCase()) {
+    return {
+      ok: false,
+      error:
+        'O e-mail do administrador principal não pode ser alterado aqui (está ligado a VITE_ADMIN_EMAIL).',
+    }
+  }
+
+  const emailChanged = email !== admin.email.trim().toLowerCase()
+  if (emailChanged) {
+    const { data: row } = await sb.from('admins').select('id').eq('email', email).maybeSingle()
+    if (row && (row as { id: string }).id !== admin.id) {
+      return { ok: false, error: 'Já existe um administrador com este e-mail.' }
+    }
+  }
+
+  const pwd = payload.password.trim()
+  if (pwd.length > 0 && pwd.length < 6) {
+    return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' }
+  }
+
+  const update: Record<string, string> = { name, email }
+  if (pwd.length > 0) {
+    update.password_hash = await bcrypt.hash(pwd, 10)
+  }
+
+  const { error } = await sb.from('admins').update(update).eq('id', admin.id)
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      return { ok: false, error: 'Já existe um administrador com este e-mail.' }
+    }
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
+}
+
 export async function deleteAdminInSupabase(
   admin: AdminListItem,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
