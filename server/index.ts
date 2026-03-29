@@ -30,6 +30,9 @@ const NODE_ENV = process.env.NODE_ENV ?? 'development'
 /** Padrão Node / Hostinger (Kodee): `process.env.PORT` com fallback 3000 */
 const port = Number(process.env.PORT || 3000)
 
+/** Diagnóstico Hostinger: deve aparecer em Runtime logs se o processo arrancar. */
+console.log('BOOT', { port: process.env.PORT, cwd: process.cwd() })
+
 /** `dist/` fica na raiz do projeto; em produção o código compilado vive em dist-server/server/. */
 const distDir = join(process.cwd(), 'dist')
 
@@ -423,6 +426,7 @@ if (existsSync(distDir)) {
 }
 
 const server = app.listen(port, '0.0.0.0', () => {
+  console.log('LISTENING', port)
   console.log(
     `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://0.0.0.0:${port}`,
   )
