@@ -35,7 +35,7 @@ O **`server.js`** não usa top-level await; importa só JS já compilado.
 
 ### `TransformError` / `esbuild` / **`EACCES`**
 
-Em alojamento partilhado o binário nativo `@esbuild/linux-x64` pode ser **bloqueado** ao correr em runtime. Por isso o **`npm start` não usa `tsx`**: o build gera **`dist-server/`** com `tsc`; em produção corre-se **`node server.js`** (importa esse JS).
+Em alojamento partilhado o binário `@esbuild/linux-x64` pode falhar por **permissão**. O projeto faz duas coisas: (1) após `npm install`, o **`postinstall`** corre um script que aplica **`chmod` 755** nesse binário (quando existe), antes do `prisma generate`; (2) o **`npm start` não usa `tsx`** — a API vai em **`dist-server/`** compilada com **`tsc`**, para o runtime não depender do esbuild.
 
 ## O que o projeto já garante (para não precisares de mudar código)
 

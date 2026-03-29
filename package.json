@@ -15,7 +15,7 @@
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
     "build": "npx vite build && npx tsc -p tsconfig.server.json",
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/chmod-esbuild-linux.mjs && prisma generate",
     "start": "node server.js",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
