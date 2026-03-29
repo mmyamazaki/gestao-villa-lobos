@@ -120,18 +120,6 @@ export function Login() {
               onChange={(e) => setSenha(e.target.value)}
             />
           </label>
-          {tipo === 'secretaria' && (
-            <p className="text-xs text-slate-500">
-              Acesso com o administrador principal do <strong>.env</strong> ou com qualquer conta da
-              tabela <code className="rounded bg-slate-100 px-1">admins</code> no Supabase (requer{' '}
-              <code className="rounded bg-slate-100 px-1">VITE_SUPABASE_*</code> configurado).
-            </p>
-          )}
-          {tipo === 'professor' && (
-            <p className="text-xs text-slate-500">
-              Use o login e a senha cadastrados na ficha do professor em Professores.
-            </p>
-          )}
           {erro && <p className="text-sm text-red-700">{erro}</p>}
           <button
             type="submit"

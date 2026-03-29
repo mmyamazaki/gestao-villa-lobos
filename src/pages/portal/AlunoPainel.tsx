@@ -7,6 +7,8 @@ import {
   formatSlotKeyLabel,
   sortSlotKeys,
 } from '../../domain/schedule'
+import { SchedulePortalLegend } from '../../components/SchedulePortalLegend'
+import { scheduleUi } from '../../components/scheduleUiTokens'
 import { computeStudentParcelView } from '../../domain/studentFinance'
 import { useSchool } from '../../state/SchoolContext'
 
@@ -100,16 +102,22 @@ export function AlunoPainel() {
 
       {tab === 'horarios' && (
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <SchedulePortalLegend />
+            <p className="mt-2 text-xs text-slate-500">
+              Estes horários são suas aulas regulares (mesma cor de &quot;ocupado&quot; na grade da escola).
+            </p>
+          </div>
           {!en ? (
             <p className="text-slate-600">Sem matrícula ativa.</p>
           ) : (
             <ul className="space-y-2">
               {en.lessonMode === '60x1' && en.slotKeys.length === 2 ? (
-                <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm">
-                  <span className="font-medium text-slate-900">
-                    {formatSixtyMinuteLessonLabel(en.slotKeys)}
-                  </span>
-                  <span className="text-slate-500">
+                <li
+                  className={`flex flex-wrap items-center justify-between gap-2 ${scheduleUi.cardOcupado}`}
+                >
+                  <span className={scheduleUi.nomeAluno}>{formatSixtyMinuteLessonLabel(en.slotKeys)}</span>
+                  <span className="text-slate-700">
                     Professor:{' '}
                     {state.teachers.find((x) => x.id === en.teacherId)?.nome ?? '—'}
                   </span>
@@ -118,10 +126,10 @@ export function AlunoPainel() {
                 sortSlotKeys(en.slotKeys).map((k) => (
                   <li
                     key={k}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm"
+                    className={`flex flex-wrap items-center justify-between gap-2 ${scheduleUi.cardOcupado}`}
                   >
-                    <span className="font-medium text-slate-900">{formatSlotKeyLabel(k)}</span>
-                    <span className="text-slate-500">
+                    <span className={scheduleUi.nomeAluno}>{formatSlotKeyLabel(k)}</span>
+                    <span className="text-slate-700">
                       Professor:{' '}
                       {state.teachers.find((x) => x.id === en.teacherId)?.nome ?? '—'}
                     </span>
@@ -135,6 +143,9 @@ export function AlunoPainel() {
 
       {tab === 'aulas' && (
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <SchedulePortalLegend />
+          </div>
           <table className="min-w-[640px] w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
               <tr>
@@ -153,11 +164,13 @@ export function AlunoPainel() {
                 </tr>
               )}
               {logsDesc.map((l) => (
-                <tr key={l.id} className="hover:bg-slate-50/80">
+                <tr key={l.id} className={`${scheduleUi.rowOcupado} hover:bg-indigo-100/80`}>
                   <td className="px-3 py-3 tabular-nums text-slate-700">
                     {l.lessonDate.split('-').reverse().join('/')}
                   </td>
-                  <td className="px-3 py-3 text-slate-600">{formatLessonLogSlot(l.slotKey)}</td>
+                  <td className="px-3 py-3">
+                    <span className={scheduleUi.chipHorario}>{formatLessonLogSlot(l.slotKey)}</span>
+                  </td>
                   <td className="px-3 py-3">
                     <span
                       className={
@@ -177,6 +190,9 @@ export function AlunoPainel() {
 
       {tab === 'reposicoes' && (
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <SchedulePortalLegend />
+          </div>
           <table className="min-w-[760px] w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
               <tr>
@@ -196,15 +212,20 @@ export function AlunoPainel() {
                 </tr>
               )}
               {replacementRows.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50/80">
-                  <td className="px-3 py-3 tabular-nums text-slate-700">
+                <tr key={r.id} className={`${scheduleUi.rowReposicao} hover:bg-violet-200/50`}>
+                  <td className="px-3 py-3 tabular-nums text-slate-800">
                     {r.date.split('-').reverse().join('/')}
                   </td>
-                  <td className="px-3 py-3 text-slate-700">
-                    {r.startTime} · {r.duration} min
+                  <td className="px-3 py-3">
+                    <span className="mr-2 align-middle">
+                      <span className={scheduleUi.badgeReposicao}>Reposição</span>
+                    </span>
+                    <span className="rounded-md bg-violet-200 px-2 py-0.5 font-bold text-black">
+                      {r.startTime} · {r.duration} min
+                    </span>
                   </td>
-                  <td className="px-3 py-3 text-slate-700">{r.teacherNome}</td>
-                  <td className="px-3 py-3 text-xs font-semibold text-slate-700">
+                  <td className="px-3 py-3 font-bold text-black">{r.teacherNome}</td>
+                  <td className="px-3 py-3 text-xs font-semibold text-slate-800">
                     {r.status === 'agendada'
                       ? 'Agendada'
                       : r.status === 'realizada'

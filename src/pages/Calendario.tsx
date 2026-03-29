@@ -56,7 +56,7 @@ export function Calendario() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Calendário</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Grade semanal por professor (mesmo padrão visual da matrícula). Verde: livre · Vermelho:
+          Grade semanal por professor (mesmo padrão visual da matrícula). Verde: livre · Vermelho vivo:
           indisponível · Ocupado: fundo azul claro com nome em preto em negrito. Reposição em violeta com
           etiqueta.
         </p>

@@ -9,6 +9,8 @@ import {
   parseSlotKey,
   sortSlotKeys,
 } from '../../domain/schedule'
+import { SchedulePortalLegend } from '../../components/SchedulePortalLegend'
+import { scheduleUi } from '../../components/scheduleUiTokens'
 import { shouldStudentOccupyScheduleSlot } from '../../domain/studentStatus'
 import { useSchool } from '../../state/SchoolContext'
 
@@ -190,6 +192,8 @@ export function ProfessorAgenda() {
         </button>
       </div>
 
+      <SchedulePortalLegend />
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-[720px] w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
@@ -210,16 +214,33 @@ export function ProfessorAgenda() {
               </tr>
             )}
             {rows.map((r) => (
-              <tr key={`${r.studentId}-${r.slotKey}-${r.lessonDate}-${r.isReplacement ? 'rep' : 'reg'}`}>
-                <td className="px-3 py-3 tabular-nums text-slate-600">
+              <tr
+                key={`${r.studentId}-${r.slotKey}-${r.lessonDate}-${r.isReplacement ? 'rep' : 'reg'}`}
+                className={
+                  r.isReplacement
+                    ? `${scheduleUi.rowReposicao} hover:bg-violet-200/50`
+                    : `${scheduleUi.rowOcupado} hover:bg-indigo-100/80`
+                }
+              >
+                <td className="px-3 py-3 tabular-nums text-slate-700">
                   {r.lessonDate.split('-').reverse().join('/')}
                 </td>
-                <td className="px-3 py-3">{r.dayLabel}</td>
-                <td className="max-w-[280px] px-3 py-3 text-slate-800">{r.timeLabel}</td>
+                <td className="px-3 py-3 font-medium text-slate-800">{r.dayLabel}</td>
+                <td className="max-w-[280px] px-3 py-3">
+                  <span
+                    className={
+                      r.isReplacement
+                        ? 'rounded-md bg-violet-200 px-2 py-0.5 font-bold text-black'
+                        : scheduleUi.chipHorario
+                    }
+                  >
+                    {r.timeLabel}
+                  </span>
+                </td>
                 <td className="px-3 py-3">
                   <button
                     type="button"
-                    className="text-left font-medium text-[#003366] underline decoration-[#00AEEF]/40 hover:text-[#00AEEF]"
+                    className={`text-left underline decoration-slate-300 ${scheduleUi.nomeAluno} hover:decoration-[#003366]`}
                     onClick={() => {
                       if (r.isReplacement && r.replacementClassId) {
                         const rr = state.replacementClasses.find((x) => x.id === r.replacementClassId)
@@ -274,9 +295,7 @@ export function ProfessorAgenda() {
                     <span className="text-slate-400">Não registrado</span>
                   )}
                   {r.isReplacement && (
-                    <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-900">
-                      REPOSIÇÃO
-                    </span>
+                    <span className={`ml-2 ${scheduleUi.badgeReposicao}`}>Reposição</span>
                   )}
                 </td>
               </tr>
@@ -293,9 +312,7 @@ export function ProfessorAgenda() {
               <strong>{modal.studentNome}</strong> · {modal.timeLabel} ·{' '}
               {modal.lessonDate.split('-').reverse().join('/')}
               {modal.isReplacement && (
-                <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-900">
-                  REPOSIÇÃO
-                </span>
+                <span className={`ml-2 ${scheduleUi.badgeReposicao}`}>Reposição</span>
               )}
             </p>
             <div className="mt-4 space-y-4">

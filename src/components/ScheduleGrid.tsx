@@ -33,17 +33,17 @@ type Props = {
   ) => void
 }
 
-/** Cores base da grade — indisponível: vermelho visível (bloqueio) */
+/** Cores base da grade — indisponível: vermelho vivo (bloqueio) */
 function cellClasses(cell: SlotState, mode: Props['mode']) {
   if (cell.status === 'busy') {
-    return 'bg-indigo-100 ring-1 ring-indigo-200'
+    return 'bg-indigo-300 ring-1 ring-indigo-500'
   }
   if (cell.status === 'unavailable') {
-    return 'bg-red-100 text-red-950 ring-1 ring-red-300'
+    return 'bg-red-500 ring-1 ring-red-600'
   }
   return mode === 'pick'
-    ? 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200 hover:bg-emerald-200'
-    : 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200 hover:bg-emerald-50'
+    ? 'bg-emerald-300 text-emerald-950 ring-1 ring-emerald-500 hover:bg-emerald-400'
+    : 'bg-emerald-300 text-emerald-950 ring-1 ring-emerald-500 hover:bg-emerald-200'
 }
 
 function buildMergeMaps(pairs: string[][] | undefined) {
@@ -68,19 +68,19 @@ export function ScheduleLegend() {
   return (
     <div className="flex flex-wrap gap-4 text-xs text-slate-600">
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-emerald-200 ring-1 ring-emerald-300" />
+        <span className="h-3 w-6 rounded bg-emerald-300 ring-1 ring-emerald-500" />
         Livre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-red-200 ring-1 ring-red-400" />
+        <span className="h-3 w-6 rounded bg-red-500 ring-1 ring-red-600" />
         Indisponível
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-indigo-200 ring-1 ring-indigo-300" />
+        <span className="h-3 w-6 rounded bg-indigo-300 ring-1 ring-indigo-500" />
         Ocupado (aluno)
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-violet-200 ring-1 ring-violet-300" />
+        <span className="h-3 w-6 rounded bg-violet-300 ring-1 ring-violet-500" />
         Reposição (data específica)
       </span>
     </div>
@@ -187,7 +187,7 @@ export function ScheduleGrid({
                           : 'flex min-h-[44px] w-full flex-col items-center justify-center rounded-md px-1 text-center transition-colors disabled:cursor-not-allowed',
                         dimDisabledSlot ? 'disabled:opacity-40' : '',
                         transient
-                          ? 'bg-violet-100 ring-1 ring-violet-300'
+                          ? 'bg-violet-300 ring-1 ring-violet-500'
                           : cellClasses(displayCell, mode),
                       ].join(' ')}
                     >
