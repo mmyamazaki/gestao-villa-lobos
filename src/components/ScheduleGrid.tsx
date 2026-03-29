@@ -38,7 +38,8 @@ function cellClasses(cell: SlotState, mode: Props['mode']) {
     return 'bg-indigo-100 text-indigo-950 ring-1 ring-indigo-200'
   }
   if (cell.status === 'unavailable') {
-    return 'bg-red-600 text-white ring-1 ring-red-700'
+    /* slate: indisponível ≠ erro de formulário (evita confusão com validação em vermelho) */
+    return 'bg-slate-500 text-white ring-1 ring-slate-600'
   }
   return mode === 'pick'
     ? 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200 hover:bg-emerald-200'
@@ -71,7 +72,7 @@ export function ScheduleLegend() {
         Livre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="h-3 w-6 rounded bg-red-600 ring-1 ring-red-700" />
+        <span className="h-3 w-6 rounded bg-slate-500 ring-1 ring-slate-600" />
         Indisponível
       </span>
       <span className="inline-flex items-center gap-2">

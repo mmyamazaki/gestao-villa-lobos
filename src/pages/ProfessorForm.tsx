@@ -245,10 +245,13 @@ function ProfessorFormInner({
           <label className="text-sm font-medium text-slate-700 md:col-span-2">
             Contatos (texto livre; se incluir telefone fixo/celular, número completo com DDD)
             <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              className={fieldClass('contatos')}
               value={draft.contatos}
               onChange={(e) => setDraft((d) => ({ ...d, contatos: e.target.value }))}
             />
+            {fieldErrors.contatos && (
+              <span className="mt-1 block text-xs text-red-700">{fieldErrors.contatos}</span>
+            )}
           </label>
           <label className="text-sm font-medium text-slate-700">
             E-mail
@@ -314,7 +317,12 @@ function ProfessorFormInner({
         <p className="mt-1 text-sm text-slate-600">
           Na matrícula, só aparecem professores que atendem o instrumento do curso escolhido.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div
+          className={[
+            'mt-4 flex flex-wrap gap-3 rounded-lg p-2',
+            fieldErrors.instrumentSlugs ? 'border-2 border-red-400 bg-red-50/40' : '',
+          ].join(' ')}
+        >
           {instrumentOptions.length === 0 ? (
             <p className="text-sm text-amber-700">Cadastre cursos em &quot;Cursos&quot; antes.</p>
           ) : (
@@ -334,6 +342,9 @@ function ProfessorFormInner({
             ))
           )}
         </div>
+        {fieldErrors.instrumentSlugs && (
+          <p className="mt-2 text-sm text-red-700">{fieldErrors.instrumentSlugs}</p>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -341,7 +352,8 @@ function ProfessorFormInner({
           <div>
             <h3 className="text-base font-semibold text-slate-900">Grade de horários</h3>
             <p className="text-sm text-slate-600">
-              Verde: livre · Vermelho: indisponível · Com nome: ocupado (clique para liberar).
+              Verde: livre · Cinza: indisponível · Com nome: ocupado (clique para liberar). A cor da grade não
+              indica erro ao salvar — erros de formulário aparecem nos campos de texto acima.
             </p>
           </div>
         </div>
@@ -405,7 +417,7 @@ function ProfessorFormInner({
           setFieldErrors(nextFieldErrors)
           if (Object.keys(nextFieldErrors).length > 0) {
             const msg =
-              'Formulário inválido. Revise os campos destacados em vermelho antes de salvar.'
+              'Corrija os campos obrigatórios destacados em vermelho (dados pessoais, contatos, instrumentos, login). A grade de horários usa cinza para indisponível — não é erro de validação.'
             setFormError(msg)
             window.alert(msg)
             return
