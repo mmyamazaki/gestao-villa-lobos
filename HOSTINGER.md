@@ -12,9 +12,9 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Versão Node:** **20.x** (recomendado pelo suporte Hostinger para Node App).
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
-   - **Comando de construção / Build:** `npm ci && npm run build` ou `npm run build` (Vite → `dist/` + **TypeScript** → `dist-server/`; o `npm start` corre JS compilado, **sem** `tsx`/esbuild em runtime).
-   - **Ficheiro de entrada / Entry file:** **`server.js`** na raiz (importa `./dist-server/server/index.js`). O build tem de correr **antes** do start para existir `dist-server/`.
-   - **Comando de arranque / Start:** `npm start` (equivale a `node server.js`)
+   - **Comando de construção / Build:** **`npm run build`** ou **`npm ci && npm run build`** — **obrigatório** gerar **`dist/`** (Vite) **e** **`dist-server/server/index.js`** (`tsc`). **Não** uses só **`vite build`**: isso **não** cria `dist-server/` e o `server.js` rebenta com *Cannot find module*.
+   - **Ficheiro de entrada / Entry file:** **`server.js`** (minúsculas). Em Linux, `dist-server` ≠ `Dist-Server`.
+   - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
    - `HOST` no painel é **opcional** — o servidor fixa sempre `0.0.0.0` no código (recomendação do suporte: evitar 503 por bind em `127.0.0.1`).
@@ -24,6 +24,10 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - Não uses `API_PORT` em produção no painel (é só para desenvolvimento local); em produção vale só `PORT`.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
+
+### Erro *Cannot find module* … *dist-server/server/index.js*
+
+O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` falhou, ou deploy por ZIP sem correr `npm run build`). Corrige o **Build** no painel e usa **`npm start`**.
 
 ### Erro 503 no browser
 
