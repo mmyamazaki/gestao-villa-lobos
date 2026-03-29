@@ -35,14 +35,14 @@ O **`server.js`** não usa top-level await; importa só JS já compilado.
 
 ### `TransformError` / `esbuild` / **`EACCES`**
 
-Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão**. O **`postinstall`** (`scripts/postinstall.mjs`) aplica **`chmod` 755** aos candidatos `node_modules/@esbuild/linux-x64/bin/esbuild` e `node_modules/esbuild/bin/esbuild`, depois corre **`prisma generate`**. O **`npm start`** não usa `tsx` — a API vai em **`dist-server/`** com **`tsc`**.
+Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão**. O **`postinstall`** (`scripts/postinstall.mjs`): **`chmod` 755** nos binários esbuild acima, **`npm rebuild esbuild --force`**, **`npx esbuild --version`**, depois **`prisma generate`**. O **`npm start`** não usa `tsx` — API em **`dist-server/`** (`tsc`); o **Vite** no **`npm run build`** ainda usa esbuild no bundler.
 
 ## O que o projeto já garante (para não precisares de mudar código)
 
 - `npm start` → `node server.js` → `./dist-server/server/index.js` (sem esbuild em runtime).
 - **`server.js`** na raiz para painéis que exigem **Entry file** `.js`.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
-- `postinstall` → `node scripts/postinstall.mjs` (chmod esbuild + `prisma generate`).
+- `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
 - Escuta com `app.listen(PORT, '0.0.0.0')` — em **`NODE_ENV=production`** usa **apenas** `process.env.PORT` (injeta a plataforma); em dev, `PORT` / `SERVER_PORT` / `HTTP_PORT` ou `API_PORT` / `3333`.
 
 ## Se não aparecer “Node.js App” no teu plano
