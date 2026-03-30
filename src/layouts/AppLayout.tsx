@@ -60,7 +60,7 @@ export function AppLayout() {
 
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 lg:px-8">
-          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 py-2 lg:flex xl:gap-2">
+          <nav className="hidden min-w-0 flex-1 flex-wrap items-center justify-center gap-1 py-2 md:flex md:gap-1 xl:gap-2">
             {nav.map((item) => (
               <NavLink
                 key={item.to}
@@ -73,7 +73,7 @@ export function AppLayout() {
             ))}
           </nav>
           {open && (
-            <div className="border-t border-slate-100 pb-4 lg:hidden">
+            <div className="border-t border-slate-100 pb-4 md:hidden">
               <div className="mx-auto flex max-w-7xl flex-col gap-1 pt-2">
                 {nav.map((item) => (
                   <NavLink
