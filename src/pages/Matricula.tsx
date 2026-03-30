@@ -59,7 +59,14 @@ function cloneStudent(b: Student): Student {
     observacoesCancelamento: b.observacoesCancelamento,
     responsavel: b.responsavel ? { ...b.responsavel } : undefined,
     enrollment: b.enrollment
-      ? { ...b.enrollment, slotKeys: [...b.enrollment.slotKeys] }
+      ? {
+          ...b.enrollment,
+          slotKeys: [...b.enrollment.slotKeys],
+          matriculatedAt: (b.enrollment.matriculatedAt || new Date().toISOString().slice(0, 10)).slice(
+            0,
+            10,
+          ),
+        }
       : null,
   }
   const a = calcAgeYears(base.dataNascimento)
@@ -487,6 +494,8 @@ function MatriculaInner({
 
   const buildEnrollment = () => {
     if (!draft.enrollment?.courseId || !draft.enrollment.teacherId) return null
+    const mat = (draft.enrollment.matriculatedAt ?? '').trim().slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(mat)) return null
     if (!selectedKeys.length) return null
     if (lessonMode === '60x1' && selectedKeys.length !== 2) return null
     if (lessonMode === '30x2' && selectedKeys.length !== 2) return null
@@ -494,17 +503,25 @@ function MatriculaInner({
       ...draft.enrollment,
       lessonMode,
       slotKeys: sortSlotKeys(selectedKeys),
-      matriculatedAt:
-        draft.enrollment.matriculatedAt || new Date().toISOString().slice(0, 10),
+      matriculatedAt: mat,
     }
   }
 
   const commitDraft = (): Student | null => {
     const nextFieldErrors: Record<string, string> = {}
+    const matRaw = (draft.enrollment?.matriculatedAt ?? '').trim().slice(0, 10)
+    const matOk = /^\d{4}-\d{2}-\d{2}$/.test(matRaw)
+    const hasCourseTeacher =
+      Boolean(draft.enrollment?.courseId) && Boolean(draft.enrollment?.teacherId)
     const en = buildEnrollment()
     if (!en) {
-      nextFieldErrors.enrollment =
-        'Preencha curso, professor, desconto e selecione os horários corretamente.'
+      if (hasCourseTeacher && !matOk) {
+        nextFieldErrors.matriculatedAt =
+          'Informe a data da matrícula (inclusive retroativa, para cadastro de alunos já existentes).'
+      } else {
+        nextFieldErrors.enrollment =
+          'Preencha curso, professor, data da matrícula, desconto e selecione os horários corretamente.'
+      }
     }
     if (!draft.nome.trim()) {
       nextFieldErrors.nome = 'Informe o nome completo do aluno.'
@@ -862,7 +879,8 @@ function MatriculaInner({
                       lessonMode,
                       slotKeys: [],
                       discountPercent: d.enrollment?.discountPercent ?? 0,
-                      matriculatedAt: d.enrollment?.matriculatedAt ?? '',
+                      matriculatedAt:
+                        d.enrollment?.matriculatedAt || new Date().toISOString().slice(0, 10),
                     },
                   }
                 })
@@ -894,7 +912,8 @@ function MatriculaInner({
                     lessonMode,
                     slotKeys: [],
                     discountPercent: d.enrollment?.discountPercent ?? 0,
-                    matriculatedAt: d.enrollment?.matriculatedAt ?? '',
+                    matriculatedAt:
+                      d.enrollment?.matriculatedAt || new Date().toISOString().slice(0, 10),
                   },
                 }))
                 resetSchedulePicks()
@@ -951,6 +970,29 @@ function MatriculaInner({
               <option value="5">5%</option>
               <option value="10">10%</option>
             </select>
+          </label>
+          <label className="md:col-span-2 text-sm font-medium text-slate-700">
+            Data da matrícula
+            <input
+              type="date"
+              className={`mt-1 w-full max-w-xs rounded-lg border px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-100 ${fieldErrors.matriculatedAt ? 'border-red-400 bg-red-50/30' : 'border-slate-200'} `}
+              disabled={!draft.enrollment?.courseId}
+              value={draft.enrollment?.matriculatedAt?.slice(0, 10) ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                setDraft((d) =>
+                  d.enrollment ? { ...d, enrollment: { ...d.enrollment, matriculatedAt: v } } : d,
+                )
+                setFieldErrors((prev) => ({ ...prev, matriculatedAt: '' }))
+              }}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Data exibida no contrato e usada na 1ª parcela (vencimento) e referência das mensalidades.
+              Pode ser anterior à data de hoje para cadastros retroativos.
+            </span>
+            {fieldErrors.matriculatedAt && (
+              <span className="mt-1 block text-xs text-red-700">{fieldErrors.matriculatedAt}</span>
+            )}
           </label>
         </div>
       </section>
