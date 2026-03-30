@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { daysLateAfterDueDate, lateFeesOnGross } from '../domain/finance'
+import type { MensalidadeRegistrada } from '../domain/types'
 import { isStudentActiveEnrolled } from '../domain/studentStatus'
 import { useSchool } from '../state/SchoolContext'
 import { FormActions } from '../components/FormActions'
+import { PaymentMensalidadeModal } from '../components/PaymentMensalidadeModal'
 import { generateMensalidadeReceiptPdf } from '../utils/generateReceiptPdf'
 
 function addDaysIso(isoDate: string, days: number) {
@@ -27,6 +29,7 @@ export function Financeiro() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [studentQuery, setStudentQuery] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [payModalRow, setPayModalRow] = useState<MensalidadeRegistrada | null>(null)
 
   const studentsForFinance = useMemo(() => {
     const withMens = new Set(state.mensalidades.map((m) => m.studentId))
@@ -81,7 +84,8 @@ export function Financeiro() {
           }
         }
         const due = new Date(m.dueDate + 'T12:00:00')
-        const pay = new Date(paymentDate + 'T12:00:00')
+        const payDay = (m.paidAt ?? paymentDate).slice(0, 10)
+        const pay = new Date(payDay + 'T12:00:00')
         let late = 0
         let fees = { fine: 0, interest: 0, total: m.liquidAmount }
         if (m.waivesLateFees) {
@@ -92,7 +96,14 @@ export function Financeiro() {
           if (late <= 0) {
             fees = { fine: 0, interest: 0, total: m.liquidAmount }
           } else {
-            fees = lateFeesOnGross(m.baseAmount, late)
+            const auto = lateFeesOnGross(m.baseAmount, late)
+            const fine = m.manualFine != null ? m.manualFine : auto.fine
+            const interest = m.manualInterest != null ? m.manualInterest : auto.interest
+            fees = {
+              fine,
+              interest,
+              total: m.baseAmount + fine + interest,
+            }
           }
         }
         return { m, late, fees, discAmount }
@@ -113,8 +124,41 @@ export function Financeiro() {
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.studentNome.localeCompare(b.studentNome))
   }, [quickFilter, state.mensalidades, today])
 
+  const finalizePayment = async (
+    m: MensalidadeRegistrada,
+    patch: { manualFine: number; manualInterest: number; adjustmentNotes?: string },
+  ) => {
+    const d = paymentDate.slice(0, 10)
+    await registerMensalidadePayment(m.id, {
+      paidDate: d,
+      manualFine: m.waivesLateFees ? 0 : patch.manualFine,
+      manualInterest: m.waivesLateFees ? 0 : patch.manualInterest,
+      adjustmentNotes: patch.adjustmentNotes,
+    })
+    const paid: MensalidadeRegistrada = {
+      ...m,
+      paidAt: d,
+      status: 'pago',
+      manualFine: m.waivesLateFees ? undefined : patch.manualFine,
+      manualInterest: m.waivesLateFees ? undefined : patch.manualInterest,
+      adjustmentNotes: patch.adjustmentNotes?.trim() || undefined,
+    }
+    void generateMensalidadeReceiptPdf(paid, { kind: 'payment', paymentDate: d })
+  }
+
   return (
     <div className="space-y-6">
+      <PaymentMensalidadeModal
+        open={payModalRow != null}
+        m={payModalRow}
+        paymentDate={paymentDate}
+        onClose={() => setPayModalRow(null)}
+        onConfirm={async (patch) => {
+          if (!payModalRow) return
+          const row = payModalRow
+          await finalizePayment(row, patch)
+        }}
+      />
       {formError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {formError}
@@ -383,22 +427,9 @@ export function Financeiro() {
                   <button
                     type="button"
                     className="inline-flex min-h-[44px] items-center rounded-md bg-[#003366] px-3 py-2 text-xs font-medium text-white hover:bg-[#00264d]"
-                    onClick={() => {
-                      try {
-                        const d = paymentDate
-                        registerMensalidadePayment(m.id, d)
-                        void generateMensalidadeReceiptPdf(
-                          { ...m, paidAt: d, status: 'pago' },
-                          { kind: 'payment', paymentDate: d },
-                        )
-                      } catch {
-                        const msg = 'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios'
-                        setFormError(msg)
-                        window.alert(msg)
-                      }
-                    }}
+                    onClick={() => setPayModalRow(m)}
                   >
-                    Registrar + recibo
+                    Efetuar pagamento
                   </button>
                 )}
               </div>
@@ -514,23 +545,9 @@ export function Financeiro() {
                       <button
                         type="button"
                         className="rounded-md bg-[#003366] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#00264d]"
-                        onClick={() => {
-                          try {
-                            const d = paymentDate
-                            registerMensalidadePayment(m.id, d)
-                            void generateMensalidadeReceiptPdf(
-                              { ...m, paidAt: d, status: 'pago' },
-                              { kind: 'payment', paymentDate: d },
-                            )
-                          } catch {
-                            const msg =
-                              'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios'
-                            setFormError(msg)
-                            window.alert(msg)
-                          }
-                        }}
+                        onClick={() => setPayModalRow(m)}
                       >
-                        Registrar + recibo
+                        Efetuar pagamento
                       </button>
                     )}
                   </td>

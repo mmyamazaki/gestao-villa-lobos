@@ -79,10 +79,10 @@ export async function generateMensalidadeReceiptPdf(
         descontoReais = m.baseAmount - m.liquidAmount
       } else {
         descontoReais = 0
-        const f = lateFeesOnGross(m.baseAmount, diasAtraso)
-        multa = f.fine
-        juros = f.interest
-        total = f.total
+        const auto = lateFeesOnGross(m.baseAmount, diasAtraso)
+        multa = m.manualFine != null ? m.manualFine : auto.fine
+        juros = m.manualInterest != null ? m.manualInterest : auto.interest
+        total = m.baseAmount + multa + juros
       }
     }
   } else {
@@ -172,14 +172,39 @@ export async function generateMensalidadeReceiptPdf(
       value: money(m.liquidAmount),
     },
     { label: 'Dias de atraso', value: String(diasAtraso) },
-    { label: 'Multa (2% sobre o bruto em atraso)', value: money(multa) },
-    { label: 'Juros (0,3% ao dia sobre o bruto em atraso)', value: money(juros) },
+    {
+      label:
+        m.manualFine != null
+          ? 'Multa (valor aplicado na baixa)'
+          : 'Multa (2% sobre o bruto em atraso)',
+      value: money(multa),
+    },
+    {
+      label:
+        m.manualInterest != null
+          ? 'Juros (valor aplicado na baixa)'
+          : 'Juros (0,3% ao dia sobre o bruto em atraso)',
+      value: money(juros),
+    },
     {
       label: opts.kind === 'payment' ? 'Total pago' : 'Total',
       value: money(total),
       valueBold: true,
     },
   ])
+
+  if (opts.kind === 'payment' && m.adjustmentNotes?.trim()) {
+    y += 2
+    y = drawWrappedText(
+      doc,
+      `Observações (ajuste manual): ${m.adjustmentNotes.trim()}`,
+      margin,
+      y,
+      maxW,
+      { font: 'normal', size: 9, lineMult: PDF_LINE_HEIGHT_MULT },
+    )
+    y += lineStepMm(9) * 0.3
+  }
 
   const suf = opts.kind === 'launch' ? 'lancamento' : 'pagamento'
   doc.save(`recibo-mensalidade-${m.parcelNumber}-mes${m.referenceMonth}-${suf}.pdf`)

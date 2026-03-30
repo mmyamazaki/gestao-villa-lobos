@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { Course, Student, Teacher } from '../src/domain/types.js'
+import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
 import type { ScheduleMap } from '../src/domain/types.js'
 
 export function courseToPrisma(c: Course): Prisma.CourseCreateInput {
@@ -186,5 +186,85 @@ export function studentFromPrisma(s: {
     status: s.status === 'inativo' ? 'inativo' : 'ativo',
     dataCancelamento: s.dataCancelamento ?? undefined,
     observacoesCancelamento: s.observacoesCancelamento ?? undefined,
+  }
+}
+
+export function mensalidadeToPrismaUnchecked(
+  m: MensalidadeRegistrada,
+): Prisma.MensalidadeUncheckedCreateInput {
+  const disc = typeof m.discountPercent === 'number' ? m.discountPercent : 0
+  return {
+    id: m.id,
+    studentId: m.studentId,
+    studentNome: m.studentNome ?? '',
+    courseId: m.courseId,
+    courseLabel: m.courseLabel ?? '',
+    parcelNumber: m.parcelNumber,
+    referenceMonth: m.referenceMonth ?? '',
+    dueDate: m.dueDate ?? '',
+    baseAmount: new Prisma.Decimal(Number(m.baseAmount) || 0),
+    discountPercent: disc,
+    liquidAmount: new Prisma.Decimal(Number(m.liquidAmount) || 0),
+    generatedAt: typeof m.generatedAt === 'string' ? m.generatedAt : '',
+    waivesLateFees: Boolean(m.waivesLateFees),
+    paidAt: m.paidAt?.slice(0, 10) ?? null,
+    status: m.status === 'cancelado' ? 'cancelado' : m.status === 'pago' ? 'pago' : 'pendente',
+    manualFine:
+      m.manualFine != null && !Number.isNaN(Number(m.manualFine))
+        ? new Prisma.Decimal(Number(m.manualFine))
+        : null,
+    manualInterest:
+      m.manualInterest != null && !Number.isNaN(Number(m.manualInterest))
+        ? new Prisma.Decimal(Number(m.manualInterest))
+        : null,
+    adjustmentNotes: m.adjustmentNotes?.trim() || null,
+  }
+}
+
+export function mensalidadeFromPrisma(row: {
+  id: string
+  studentId: string
+  studentNome: string
+  courseId: string
+  courseLabel: string
+  parcelNumber: number
+  referenceMonth: string
+  dueDate: string
+  baseAmount: unknown
+  discountPercent: number
+  liquidAmount: unknown
+  generatedAt: string
+  waivesLateFees: boolean
+  paidAt: string | null
+  status: string
+  manualFine: unknown
+  manualInterest: unknown
+  adjustmentNotes: string | null
+}): MensalidadeRegistrada {
+  const dp = row.discountPercent === 5 || row.discountPercent === 10 ? row.discountPercent : 0
+  const st = row.status === 'cancelado' ? 'cancelado' : row.status === 'pago' ? 'pago' : 'pendente'
+  const paid =
+    typeof row.paidAt === 'string' && row.paidAt.length >= 8 ? row.paidAt.slice(0, 10) : undefined
+  const mf = row.manualFine == null ? undefined : Number(row.manualFine)
+  const mi = row.manualInterest == null ? undefined : Number(row.manualInterest)
+  return {
+    id: row.id,
+    studentId: row.studentId,
+    studentNome: row.studentNome,
+    courseId: row.courseId,
+    courseLabel: row.courseLabel,
+    parcelNumber: row.parcelNumber,
+    referenceMonth: row.referenceMonth,
+    dueDate: row.dueDate,
+    baseAmount: Number(row.baseAmount),
+    discountPercent: dp as 0 | 5 | 10,
+    liquidAmount: Number(row.liquidAmount),
+    generatedAt: row.generatedAt,
+    waivesLateFees: row.waivesLateFees,
+    paidAt: paid,
+    status: st,
+    manualFine: mf != null && !Number.isNaN(mf) ? mf : undefined,
+    manualInterest: mi != null && !Number.isNaN(mi) ? mi : undefined,
+    adjustmentNotes: row.adjustmentNotes?.trim() || undefined,
   }
 }

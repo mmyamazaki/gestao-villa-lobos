@@ -128,6 +128,12 @@ export interface MensalidadeRegistrada {
   /** Data em que o pagamento foi registrado (YYYY-MM-DD) */
   paidAt?: string
   status: MensalidadeStatus
+  /** Multa (R$) aplicada na baixa; quando quitada, preferir estes valores no recibo. */
+  manualFine?: number
+  /** Juros (R$) aplicados na baixa. */
+  manualInterest?: number
+  /** Preenchido quando multa/juros foram alterados em relação ao cálculo automático. */
+  adjustmentNotes?: string
 }
 
 /** Registro de presença e conteúdo por aula (professor ↔ aluno). */

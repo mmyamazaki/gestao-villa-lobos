@@ -37,7 +37,7 @@ import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
 import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/teacherSupabase'
 import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
-import { ensureSchedule } from './schoolUtils'
+import { ensureSchedule, mergeMensalidadesFromServer } from './schoolUtils'
 
 /** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
 function coursesPayloadForPut(courses: Course[]): Course[] {
@@ -418,7 +418,15 @@ export type SchoolContextValue = {
   /** Exclui o professor no servidor e desvincula alunos (curso mantido; professor e horários a redistribuir). */
   deleteTeacher: (teacherId: string) => Promise<void>
   saveStudent: (draft: Student) => Promise<{ ok: true } | { ok: false; message: string }>
-  registerMensalidadePayment: (mensalidadeId: string, paidDate: string) => void
+  registerMensalidadePayment: (
+    mensalidadeId: string,
+    payload: {
+      paidDate: string
+      manualFine: number
+      manualInterest: number
+      adjustmentNotes?: string
+    },
+  ) => Promise<void>
   saveLessonLog: (payload: {
     teacherId: string
     studentId: string
@@ -517,6 +525,28 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         }
 
         applyCore(core)
+
+        if (!cancelled) {
+          try {
+            const mr = await fetchWithTimeout(apiUrl('/api/mensalidades'), { timeoutMs: 45_000 })
+            if (cancelled || !mr.ok) {
+              /* sem sincronismo remoto */
+            } else {
+              const listUnknown: unknown = await mr.json()
+              const list = Array.isArray(listUnknown)
+                ? (listUnknown as MensalidadeRegistrada[])
+                : []
+              if (list.length > 0) {
+                setState((prev) => ({
+                  ...prev,
+                  mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+                }))
+              }
+            }
+          } catch {
+            /* API sem mensalidades ou rede */
+          }
+        }
       } catch (e) {
         console.warn('[SchoolProvider] GET /api/school/core falhou; tentando Supabase se configurado.', e)
 
@@ -524,6 +554,25 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           try {
             const core = await fetchSchoolCoreFromSupabase()
             applyCore(core)
+            if (!cancelled) {
+              try {
+                const mr = await fetchWithTimeout(apiUrl('/api/mensalidades'), { timeoutMs: 45_000 })
+                if (!cancelled && mr.ok) {
+                  const listUnknown: unknown = await mr.json()
+                  const list = Array.isArray(listUnknown)
+                    ? (listUnknown as MensalidadeRegistrada[])
+                    : []
+                  if (list.length > 0) {
+                    setState((prev) => ({
+                      ...prev,
+                      mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+                    }))
+                  }
+                }
+              } catch {
+                /* ignora */
+              }
+            }
             console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')
             return
           } catch (e2) {
@@ -813,19 +862,63 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const registerMensalidadePayment = useCallback((mensalidadeId: string, paidDate: string) => {
-    setState((prev) => {
-      const target = prev.mensalidades.find((m) => m.id === mensalidadeId)
-      if (!target || target.status === 'cancelado') return prev
-      const d = paidDate.slice(0, 10)
-      return {
-        ...prev,
-        mensalidades: prev.mensalidades.map((m) =>
-          m.id === mensalidadeId ? { ...m, paidAt: d, status: 'pago' as const } : m,
-        ),
+  const registerMensalidadePayment = useCallback(
+    async (
+      mensalidadeId: string,
+      payload: {
+        paidDate: string
+        manualFine: number
+        manualInterest: number
+        adjustmentNotes?: string
+      },
+    ) => {
+      const d = payload.paidDate.slice(0, 10)
+      const fine = Number(payload.manualFine)
+      const interest = Number(payload.manualInterest)
+      if (!Number.isFinite(fine) || !Number.isFinite(interest)) {
+        throw new Error('Multa e juros devem ser números válidos.')
       }
-    })
-  }, [])
+      const notes = payload.adjustmentNotes?.trim() || undefined
+
+      let merged: MensalidadeRegistrada | null = null
+      setState((prev) => {
+        const target = prev.mensalidades.find((m) => m.id === mensalidadeId)
+        if (!target || target.status === 'cancelado') return prev
+        merged = {
+          ...target,
+          paidAt: d,
+          status: 'pago',
+          manualFine: fine,
+          manualInterest: interest,
+          adjustmentNotes: notes,
+        }
+        return {
+          ...prev,
+          mensalidades: prev.mensalidades.map((m) => (m.id === mensalidadeId ? merged! : m)),
+        }
+      })
+      if (!merged) return
+
+      try {
+        const res = await fetchWithTimeout(
+          apiUrl(`/api/mensalidades/${encodeURIComponent(mensalidadeId)}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(merged),
+            timeoutMs: 90_000,
+          },
+        )
+        if (!res.ok) {
+          const t = await res.text().catch(() => '')
+          console.warn('[SchoolProvider] PUT /api/mensalidades falhou', res.status, t.slice(0, 200))
+        }
+      } catch (e) {
+        console.warn('[SchoolProvider] PUT /api/mensalidades', e)
+      }
+    },
+    [],
+  )
 
   const saveLessonLog = useCallback(
     (payload: {

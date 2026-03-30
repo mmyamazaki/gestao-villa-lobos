@@ -56,14 +56,17 @@ export function computeStudentParcelView(
       }
     }
     const diasAtraso = Math.max(0, differenceInCalendarDays(pay, due))
-    const { fine, interest, total } = lateFeesOnGross(m.baseAmount, diasAtraso)
+    const auto = lateFeesOnGross(m.baseAmount, diasAtraso)
+    const multa = m.manualFine != null ? m.manualFine : auto.fine
+    const juros = m.manualInterest != null ? m.manualInterest : auto.interest
+    const total = m.baseAmount + multa + juros
     return {
       m,
       status: 'pago',
       valorBruto: m.baseAmount,
       descontoReais: 0,
-      multa: fine,
-      juros: interest,
+      multa,
+      juros,
       total,
       diasAtraso,
     }

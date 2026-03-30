@@ -74,6 +74,12 @@ model Mensalidade {
   waivesLateFees  Boolean
   paidAt          String?
   status          String
+  /** Multa (R$) efetiva no pagamento; nulo em parcelas antigas / não quitadas. */
+  manualFine      Decimal? @db.Decimal(12, 2) @map("manual_fine")
+  /** Juros (R$) efetivos no pagamento. */
+  manualInterest  Decimal? @db.Decimal(12, 2) @map("manual_interest")
+  /** Obrigatório quando multa/juros diferem do cálculo automático. */
+  adjustmentNotes String?  @map("adjustment_notes") @db.Text
 }
 
 model LessonLog {

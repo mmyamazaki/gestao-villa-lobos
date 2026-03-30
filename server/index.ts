@@ -11,11 +11,13 @@ import { join } from 'node:path'
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
 import { Prisma } from '@prisma/client'
-import type { Course, Student, Teacher } from '../src/domain/types.js'
+import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
 import { prisma } from './prisma.js'
 import {
   courseFromPrisma,
   courseToPrisma,
+  mensalidadeFromPrisma,
+  mensalidadeToPrismaUnchecked,
   normalizeCourseFromClient,
   studentFromPrisma,
   studentToPrisma,
@@ -465,6 +467,39 @@ app.put('/api/students/:id', async (req: Request, res: Response) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao salvar aluno' })
+  }
+})
+
+app.get('/api/mensalidades', async (_req: Request, res: Response) => {
+  try {
+    const rows = await prisma.mensalidade.findMany({
+      orderBy: [{ studentId: 'asc' }, { parcelNumber: 'asc' }],
+    })
+    res.json(rows.map(mensalidadeFromPrisma))
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao listar mensalidades' })
+  }
+})
+
+app.put('/api/mensalidades/:id', async (req: Request, res: Response) => {
+  try {
+    const paramId = routeParamId(req.params.id)
+    const body = req.body as MensalidadeRegistrada
+    if (!paramId || paramId !== body?.id?.trim()) {
+      res.status(400).json({ error: 'ID inconsistente ou ausente.' })
+      return
+    }
+    const data = mensalidadeToPrismaUnchecked(body)
+    await prisma.mensalidade.upsert({
+      where: { id: body.id },
+      create: data,
+      update: data,
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao salvar mensalidade' })
   }
 })
 
