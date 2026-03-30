@@ -33,6 +33,10 @@ O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` fa
 
 Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
+### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
+
+O pooler **transação** do Supabase (**6543**) é problemático para o Prisma. O código **troca para 5432** no mesmo host `*.pooler.supabase.com` (modo sessão). Rotas `/api/...` e variáveis `VITE_*` no browser **não são alteradas**.
+
 ### `ERR_REQUIRE_ASYNC_MODULE`
 
 O **`server.js`** não usa top-level await; importa só JS já compilado.

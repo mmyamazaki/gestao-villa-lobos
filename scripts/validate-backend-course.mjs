@@ -6,7 +6,12 @@
 import 'dotenv/config'
 import { PrismaClient, Prisma } from '@prisma/client'
 
-const prisma = new PrismaClient()
+import { normalizeDatabaseUrlForPrisma } from './lib/normalize-database-url.mjs'
+
+const raw = process.env.DATABASE_URL?.trim()
+const prisma = new PrismaClient(
+  raw ? { datasources: { db: { url: normalizeDatabaseUrlForPrisma(raw) } } } : undefined,
+)
 const testId = `validate-crud-${Date.now().toString(36)}`
 
 async function runPrismaCrud() {

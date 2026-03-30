@@ -10,8 +10,9 @@ import { join } from 'node:path'
 
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
-import { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import type { Course, Student, Teacher } from '../src/domain/types.js'
+import { prisma } from './prisma.js'
 import {
   courseFromPrisma,
   courseToPrisma,
@@ -21,8 +22,6 @@ import {
   teacherFromPrisma,
   teacherToPrisma,
 } from './mappers.js'
-
-const prisma = new PrismaClient()
 const app = express()
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
