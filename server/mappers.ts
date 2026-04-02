@@ -1,4 +1,8 @@
 import { Prisma } from '@prisma/client'
+import {
+  filiacaoLegacyString,
+  normalizeStudentParentsFromDb,
+} from '../src/domain/studentParents.js'
 import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
 import type { ScheduleMap } from '../src/domain/types.js'
 
@@ -127,6 +131,8 @@ export function teacherFromPrisma(t: {
 }
 
 export function studentToPrisma(s: Student): Prisma.StudentCreateInput {
+  const nomePai = s.nomePai ?? ''
+  const nomeMae = s.nomeMae ?? ''
   return {
     id: s.id,
     codigo: s.codigo,
@@ -134,7 +140,9 @@ export function studentToPrisma(s: Student): Prisma.StudentCreateInput {
     dataNascimento: s.dataNascimento,
     rg: s.rg,
     cpf: s.cpf,
-    filiacao: s.filiacao,
+    nomePai,
+    nomeMae,
+    filiacao: filiacaoLegacyString(nomePai, nomeMae),
     endereco: s.endereco,
     telefone: s.telefone,
     email: s.email,
@@ -156,6 +164,8 @@ export function studentFromPrisma(s: {
   dataNascimento: string
   rg: string
   cpf: string
+  nomePai?: string | null
+  nomeMae?: string | null
   filiacao: string
   endereco: string
   telefone: string
@@ -168,6 +178,7 @@ export function studentFromPrisma(s: {
   dataCancelamento: string | null
   observacoesCancelamento: string | null
 }): Student {
+  const parents = normalizeStudentParentsFromDb(s.nomePai, s.nomeMae, s.filiacao)
   return {
     id: s.id,
     codigo: s.codigo,
@@ -175,7 +186,8 @@ export function studentFromPrisma(s: {
     dataNascimento: s.dataNascimento,
     rg: s.rg,
     cpf: s.cpf,
-    filiacao: s.filiacao,
+    nomePai: parents.nomePai,
+    nomeMae: parents.nomeMae,
     endereco: s.endereco,
     telefone: s.telefone,
     email: s.email,

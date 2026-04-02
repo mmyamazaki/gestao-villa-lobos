@@ -45,6 +45,9 @@ model Student {
   dataNascimento          String
   rg                      String
   cpf                     String
+  nomePai                 String  @default("")
+  nomeMae                 String  @default("")
+  /** Texto legado / exportação; derivado de nomePai e nomeMae ao salvar. */
   filiacao                String
   endereco                String
   telefone                String

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { calcAgeYears, normalizeBirthToIso } from '../domain/age'
+import { normalizeStudentParentsFromDb } from '../domain/studentParents'
 import {
   DAY_LABELS,
   SLOT_COUNT,
@@ -29,6 +30,7 @@ import {
   isCpfComplete,
   isPhoneBrComplete,
   isRgNumericComplete,
+  onlyDigits,
 } from '../utils/brMasks'
 import { generateEnrollmentContractPdf } from '../utils/generateContractPdf'
 import { generateMensalidadeReceiptPdf } from '../utils/generateReceiptPdf'
@@ -48,8 +50,11 @@ function emptyResponsible(): Responsible {
 function cloneStudent(b: Student): Student {
   const birthRaw = b.dataNascimento ?? ''
   const birthIso = normalizeBirthToIso(birthRaw) || birthRaw
+  const legacy = b as Student & { filiacao?: string }
+  const parents = normalizeStudentParentsFromDb(legacy.nomePai, legacy.nomeMae, legacy.filiacao)
   const base: Student = {
     ...b,
+    ...parents,
     dataNascimento: birthIso,
     endereco: b.endereco ?? '',
     telefone: b.telefone ?? '',
@@ -130,7 +135,8 @@ export function Matricula() {
         dataNascimento: '',
         rg: '',
         cpf: '',
-        filiacao: '',
+        nomePai: '',
+        nomeMae: '',
         endereco: '',
         telefone: '',
         email: '',
@@ -526,11 +532,24 @@ function MatriculaInner({
     if (!draft.nome.trim()) {
       nextFieldErrors.nome = 'Informe o nome completo do aluno.'
     }
-    if (!isCpfComplete(draft.cpf)) {
-      nextFieldErrors.cpf = 'CPF do aluno incompleto (11 dígitos).'
-    }
-    if (!isRgNumericComplete(draft.rg)) {
-      nextFieldErrors.rg = 'RG do aluno incompleto (6 a 9 dígitos numéricos).'
+    const ageYears = calcAgeYears(draft.dataNascimento)
+    const requireStudentCpfRg = ageYears === null || ageYears >= 18
+    if (requireStudentCpfRg) {
+      if (!isCpfComplete(draft.cpf)) {
+        nextFieldErrors.cpf = 'CPF do aluno incompleto (11 dígitos).'
+      }
+      if (!isRgNumericComplete(draft.rg)) {
+        nextFieldErrors.rg = 'RG do aluno incompleto (6 a 9 dígitos numéricos).'
+      }
+    } else {
+      const cpfN = onlyDigits(draft.cpf).length
+      if (cpfN > 0 && cpfN !== 11) {
+        nextFieldErrors.cpf = 'Se informar CPF, use os 11 dígitos.'
+      }
+      const rgN = onlyDigits(draft.rg).length
+      if (rgN > 0 && !isRgNumericComplete(draft.rg)) {
+        nextFieldErrors.rg = 'Se informar RG, use entre 6 e 9 dígitos numéricos.'
+      }
     }
     if (!isPhoneBrComplete(draft.telefone)) {
       nextFieldErrors.telefone = 'Telefone do aluno incompleto (10 dígitos fixo ou 11 celular).'
@@ -691,14 +710,31 @@ function MatriculaInner({
               Idade (atualizada ao mudar a data): {age !== null ? `${age} anos` : '—'}
             </span>
           </label>
-          <label className="text-sm font-medium text-slate-700">
-            Filiação
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-              value={draft.filiacao}
-              onChange={(e) => setDraft((d) => ({ ...d, filiacao: e.target.value }))}
-            />
-          </label>
+          <div className="md:col-span-2 space-y-2">
+            <p className="text-sm font-medium text-slate-700">
+              Filiação <span className="font-normal text-slate-500">(opcional)</span>
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="text-sm font-medium text-slate-700">
+                Nome do pai
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+                  value={draft.nomePai}
+                  onChange={(e) => setDraft((d) => ({ ...d, nomePai: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Nome da mãe
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+                  value={draft.nomeMae}
+                  onChange={(e) => setDraft((d) => ({ ...d, nomeMae: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          </div>
           <label className="text-sm font-medium text-slate-700">
             RG
             <input
@@ -707,6 +743,9 @@ function MatriculaInner({
               onChange={(e) => setDraft((d) => ({ ...d, rg: formatRgNumericBR(e.target.value) }))}
             />
             {fieldErrors.rg && <span className="mt-1 block text-xs text-red-700">{fieldErrors.rg}</span>}
+            {minor && (
+              <span className="mt-1 block text-xs text-slate-500">Opcional para menores de 18 anos.</span>
+            )}
           </label>
           <label className="text-sm font-medium text-slate-700">
             CPF
@@ -716,6 +755,9 @@ function MatriculaInner({
               onChange={(e) => setDraft((d) => ({ ...d, cpf: formatCpfBR(e.target.value) }))}
             />
             {fieldErrors.cpf && <span className="mt-1 block text-xs text-red-700">{fieldErrors.cpf}</span>}
+            {minor && (
+              <span className="mt-1 block text-xs text-slate-500">Opcional para menores de 18 anos.</span>
+            )}
           </label>
           <label className="md:col-span-2 text-sm font-medium text-slate-700">
             Endereço completo

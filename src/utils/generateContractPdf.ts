@@ -9,6 +9,7 @@ import {
   formatSlotKeyLabel,
   sortSlotKeys,
 } from '../domain/schedule'
+import { isCpfComplete } from './brMasks'
 import { drawPdfHeader, SCHOOL_DISPLAY_NAME } from './pdfHeader'
 import {
   PDF_LINE_HEIGHT_MULT,
@@ -66,7 +67,11 @@ export async function generateEnrollmentContractPdf(
   const minorH = age !== null && age < 18 && Boolean(student.responsavel)
 
   const partyName = minorH ? student.responsavel!.nome : student.nome
-  const partyCpf = minorH ? student.responsavel!.cpf : student.cpf
+  const partyCpf = minorH
+    ? student.responsavel!.cpf
+    : isCpfComplete(student.cpf)
+      ? student.cpf
+      : '______________________'
   const partyAddr = minorH ? student.responsavel!.endereco : student.endereco
   const { logradouro, numero, bairro } = splitAddressRough(partyAddr)
   const studentMention = student.nome

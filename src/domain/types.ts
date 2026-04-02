@@ -85,7 +85,8 @@ export interface Student {
   dataNascimento: string
   rg: string
   cpf: string
-  filiacao: string
+  nomePai: string
+  nomeMae: string
   /** Endereço completo (obrigatório para todos os alunos) */
   endereco: string
   telefone: string
