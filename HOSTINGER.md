@@ -12,8 +12,8 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Versão Node:** **20.x** (recomendado pelo suporte Hostinger para Node App).
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
-   - **Comando de construção / Build:** **`npm run build`** ou **`npm ci && npm run build`** — **obrigatório** gerar **`dist/`** (Vite) **e** **`dist-server/server/index.js`** (`tsc`). **Não** uses só **`vite build`**: isso **não** cria `dist-server/` e o `server.js` rebenta com *Cannot find module*.
-   - **Ficheiro de entrada / Entry file:** **`server.js`** (minúsculas). Em Linux, `dist-server` ≠ `Dist-Server`.
+   - **Comando de construção / Build:** **`npm run build`** ou **`npm ci && npm run build`** — **obrigatório** gerar **`dist/`** (Vite) **e** **`dist-server/server/index.js`** (`tsc`). **Não** uses só **`vite build`**: isso **não** cria `dist-server/` e o arranque rebenta com *Cannot find module*.
+   - **Ficheiro de entrada / Entry file:** **`index.js`** (na raiz do repo). Alguns painéis só aceitam este nome; **`server.js`** na raiz reexporta o mesmo e também funciona. Em Linux, `dist-server` ≠ `Dist-Server`.
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
@@ -39,7 +39,7 @@ O pooler **transação** do Supabase (**6543**) é problemático para o Prisma. 
 
 ### `ERR_REQUIRE_ASYNC_MODULE`
 
-O **`server.js`** não usa top-level await; importa só JS já compilado.
+O **`index.js`** / **`server.js`** não usam top-level await; importam só JS já compilado.
 
 ### `TransformError` / `esbuild` / **`EACCES`**
 
@@ -47,8 +47,8 @@ Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão*
 
 ## O que o projeto já garante (para não precisares de mudar código)
 
-- `npm start` → `node server.js` → `./dist-server/server/index.js` (sem esbuild em runtime).
-- **`server.js`** na raiz para painéis que exigem **Entry file** `.js`.
+- `npm start` → `node index.js` → `./dist-server/server/index.js` (sem esbuild em runtime).
+- **`index.js`** na raiz (entrada principal); **`server.js`** reexporta para painéis antigos que fixam esse nome.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
 - Escuta com `app.listen(port, '0.0.0.0')` onde `port = Number(process.env.PORT || 3000)`.
