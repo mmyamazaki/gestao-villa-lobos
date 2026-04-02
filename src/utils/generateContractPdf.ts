@@ -46,6 +46,28 @@ function splitAddressRough(endereco: string): { logradouro: string; numero: stri
   return { logradouro, numero, bairro }
 }
 
+/**
+ * Endereço sem vírgulas não pode ser partido em logradouro/bairro — senão o mesmo texto aparece duas vezes no contrato.
+ * Com 2+ trechos separados por vírgula, usa o modelo “Rua/Av. … Nº … bairro …”.
+ */
+function parseAddressForContract(endereco: string):
+  | { kind: 'structured'; logradouro: string; numero: string; bairro: string }
+  | { kind: 'full'; line: string } {
+  const trimmed = endereco.trim()
+  if (!trimmed) {
+    return { kind: 'full', line: '_______' }
+  }
+  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean)
+  if (parts.length < 2) {
+    return { kind: 'full', line: trimmed }
+  }
+  const { logradouro, numero, bairro } = splitAddressRough(trimmed)
+  if (logradouro === bairro) {
+    return { kind: 'full', line: trimmed }
+  }
+  return { kind: 'structured', logradouro, numero, bairro }
+}
+
 function discountPorExtenso(p: 0 | 5 | 10): string {
   const map: Record<number, string> = { 0: 'zero', 5: 'cinco', 10: 'dez' }
   return map[p] ?? String(p)
@@ -72,11 +94,11 @@ export async function generateEnrollmentContractPdf(
     : isCpfComplete(student.cpf)
       ? student.cpf
       : '______________________'
-  const partyAddr =
-    minorH && student.responsavel?.endereco?.trim()
-      ? student.responsavel.endereco
-      : student.endereco
-  const { logradouro, numero, bairro } = splitAddressRough(partyAddr)
+  /** Menor: só endereço do responsável. Maior de idade: só endereço do aluno. */
+  const partyAddr = minorH
+    ? (student.responsavel?.endereco ?? '').trim()
+    : (student.endereco ?? '').trim()
+  const addrPdf = parseAddressForContract(partyAddr)
   const studentMention = student.nome
 
   const base = course.monthlyPrice
@@ -140,22 +162,36 @@ export async function generateEnrollmentContractPdf(
     y += paraGap(doc)
   }
 
+  const partyClauseSegments =
+    addrPdf.kind === 'full'
+      ? [
+          { text: partyName, bold: true as const },
+          { text: ', residente e domiciliado em ', bold: false as const },
+          { text: addrPdf.line, bold: true as const },
+          { text: ', portador do CPF nº ', bold: false as const },
+          { text: partyCpf, bold: true as const },
+          { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
+          { text: studentMention, bold: true as const },
+          { text: ', tem justo e contratado o que segue:', bold: false as const },
+        ]
+      : [
+          { text: partyName, bold: true as const },
+          { text: ', residente e domiciliado na Rua/Av. ', bold: false as const },
+          { text: addrPdf.logradouro, bold: true as const },
+          { text: ' Nº ', bold: false as const },
+          { text: addrPdf.numero, bold: true as const },
+          { text: ', bairro ', bold: false as const },
+          { text: addrPdf.bairro, bold: true as const },
+          { text: ', portador do CPF nº ', bold: false as const },
+          { text: partyCpf, bold: true as const },
+          { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
+          { text: studentMention, bold: true as const },
+          { text: ', tem justo e contratado o que segue:', bold: false as const },
+        ]
+
   y = drawSegmentParagraph(
     doc,
-    [
-      { text: partyName, bold: true },
-      { text: ', residente e domiciliado na Rua/Av. ', bold: false },
-      { text: logradouro, bold: true },
-      { text: ' Nº ', bold: false },
-      { text: numero, bold: true },
-      { text: ', bairro ', bold: false },
-      { text: bairro, bold: true },
-      { text: ', portador do CPF nº ', bold: false },
-      { text: partyCpf, bold: true },
-      { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false },
-      { text: studentMention, bold: true },
-      { text: ', tem justo e contratado o que segue:', bold: false },
-    ],
+    partyClauseSegments,
     PDF_MARGIN_X,
     y,
     maxW,
