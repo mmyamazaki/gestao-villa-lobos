@@ -72,7 +72,10 @@ export async function generateEnrollmentContractPdf(
     : isCpfComplete(student.cpf)
       ? student.cpf
       : '______________________'
-  const partyAddr = minorH ? student.responsavel!.endereco : student.endereco
+  const partyAddr =
+    minorH && student.responsavel?.endereco?.trim()
+      ? student.responsavel.endereco
+      : student.endereco
   const { logradouro, numero, bairro } = splitAddressRough(partyAddr)
   const studentMention = student.nome
 

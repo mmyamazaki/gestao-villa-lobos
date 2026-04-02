@@ -574,19 +574,17 @@ function MatriculaInner({
       const r = draft.responsavel
       if (!r) {
         nextFieldErrors.responsavel = 'Dados do responsável não encontrados.'
-      } else if (!r.nome || !r.parentesco || !r.profissao || !r.endereco) {
-        nextFieldErrors.responsavel =
-          'Para menores de 18 anos, preencha todos os dados do responsável (incluindo endereço).'
-      }
-      if (r && !isCpfComplete(r.cpf)) {
-        nextFieldErrors.responsavelCpf = 'CPF do responsável incompleto (11 dígitos).'
-      }
-      if (r && !isRgNumericComplete(r.rg)) {
-        nextFieldErrors.responsavelRg = 'RG do responsável incompleto (6 a 9 dígitos numéricos).'
-      }
-      if (r && !isPhoneBrComplete(r.contato)) {
-        nextFieldErrors.responsavelContato =
-          'Contato do responsável incompleto (telefone com DDD, 10 ou 11 dígitos).'
+      } else {
+        if (!r.nome.trim()) {
+          nextFieldErrors.responsavelNome = 'Informe o nome do responsável.'
+        }
+        if (!isCpfComplete(r.cpf)) {
+          nextFieldErrors.responsavelCpf = 'CPF do responsável incompleto (11 dígitos).'
+        }
+        if (!isPhoneBrComplete(r.contato)) {
+          nextFieldErrors.responsavelContato =
+            'Telefone do responsável incompleto (10 ou 11 dígitos com DDD).'
+        }
       }
     }
     setFieldErrors(nextFieldErrors)
@@ -797,24 +795,53 @@ function MatriculaInner({
 
       {minor && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-6 shadow-sm">
-          <h3 className="text-base font-semibold text-amber-950">Dados do responsável (obrigatório)</h3>
+          <h3 className="text-base font-semibold text-amber-950">Dados do responsável</h3>
+          <p className="mt-1 text-sm text-amber-900/90">
+            Obrigatórios: nome, telefone e CPF. Os demais campos são opcionais.
+          </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {(() => {
               const r = draft.responsavel ?? emptyResponsible()
               const patch = (p: Partial<Responsible>) =>
                 setDraft((d) => ({ ...d, responsavel: { ...r, ...p } }))
+              const errNome = fieldErrors.responsavelNome
+              const errCpf = fieldErrors.responsavelCpf
+              const errTel = fieldErrors.responsavelContato
+              const ringNome = errNome ? 'border-red-400 bg-red-50/30' : 'border-amber-200'
+              const ringCpf = errCpf ? 'border-red-400 bg-red-50/30' : 'border-amber-200'
+              const ringTel = errTel ? 'border-red-400 bg-red-50/30' : 'border-amber-200'
               return (
                 <>
-                  <label className="text-sm font-medium text-slate-800">
-                    Nome
+                  <label className="md:col-span-2 text-sm font-medium text-slate-800">
+                    Nome <span className="text-red-700">*</span>
                     <input
-                      className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+                      className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2 ${ringNome}`}
                       value={r.nome}
                       onChange={(e) => patch({ nome: e.target.value })}
                     />
+                    {errNome && <span className="mt-1 block text-xs text-red-700">{errNome}</span>}
                   </label>
                   <label className="text-sm font-medium text-slate-800">
-                    Parentesco
+                    Telefone <span className="text-red-700">*</span>
+                    <input
+                      type="tel"
+                      className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2 ${ringTel}`}
+                      value={r.contato}
+                      onChange={(e) => patch({ contato: formatPhoneFlexibleBR(e.target.value) })}
+                    />
+                    {errTel && <span className="mt-1 block text-xs text-red-700">{errTel}</span>}
+                  </label>
+                  <label className="text-sm font-medium text-slate-800">
+                    CPF <span className="text-red-700">*</span>
+                    <input
+                      className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2 ${ringCpf}`}
+                      value={r.cpf}
+                      onChange={(e) => patch({ cpf: formatCpfBR(e.target.value) })}
+                    />
+                    {errCpf && <span className="mt-1 block text-xs text-red-700">{errCpf}</span>}
+                  </label>
+                  <label className="text-sm font-medium text-slate-800">
+                    Parentesco <span className="font-normal text-slate-500">(opcional)</span>
                     <select
                       className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
                       value={r.parentesco}
@@ -828,7 +855,7 @@ function MatriculaInner({
                     </select>
                   </label>
                   <label className="text-sm font-medium text-slate-800">
-                    Profissão
+                    Profissão <span className="font-normal text-slate-500">(opcional)</span>
                     <input
                       className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
                       value={r.profissao}
@@ -836,31 +863,15 @@ function MatriculaInner({
                     />
                   </label>
                   <label className="text-sm font-medium text-slate-800">
-                    RG
+                    RG <span className="font-normal text-slate-500">(opcional)</span>
                     <input
                       className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
                       value={r.rg}
                       onChange={(e) => patch({ rg: formatRgNumericBR(e.target.value) })}
                     />
                   </label>
-                  <label className="text-sm font-medium text-slate-800">
-                    CPF
-                    <input
-                      className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-                      value={r.cpf}
-                      onChange={(e) => patch({ cpf: formatCpfBR(e.target.value) })}
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-800">
-                    Contato
-                    <input
-                      className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-                      value={r.contato}
-                      onChange={(e) => patch({ contato: formatPhoneFlexibleBR(e.target.value) })}
-                    />
-                  </label>
                   <label className="md:col-span-2 text-sm font-medium text-slate-800">
-                    Endereço
+                    Endereço <span className="font-normal text-slate-500">(opcional)</span>
                     <input
                       className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
                       value={r.endereco}
