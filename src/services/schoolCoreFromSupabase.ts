@@ -4,7 +4,6 @@
  * Requer políticas RLS que permitam SELECT nas tabelas Course, Teacher, Student para `anon`
  * (equivalente ao GET /api/school/core aberto).
  */
-import { normalizeStudentParentsFromDb } from '../domain/studentParents'
 import { getSupabase } from '../integrations/supabase/client'
 import type { Course, Student, Teacher } from '../domain/types'
 import type { ScheduleMap } from '../domain/types'
@@ -42,11 +41,6 @@ function mapTeacher(row: Record<string, unknown>): Teacher {
 
 function mapStudent(row: Record<string, unknown>): Student {
   const status = row.status === 'inativo' ? 'inativo' : 'ativo'
-  const parents = normalizeStudentParentsFromDb(
-    row.nomePai != null ? String(row.nomePai) : undefined,
-    row.nomeMae != null ? String(row.nomeMae) : undefined,
-    row.filiacao != null ? String(row.filiacao) : undefined,
-  )
   return {
     id: String(row.id),
     codigo: String(row.codigo ?? ''),
@@ -54,8 +48,7 @@ function mapStudent(row: Record<string, unknown>): Student {
     dataNascimento: String(row.dataNascimento ?? ''),
     rg: String(row.rg ?? ''),
     cpf: String(row.cpf ?? ''),
-    nomePai: parents.nomePai,
-    nomeMae: parents.nomeMae,
+    filiacao: String(row.filiacao ?? ''),
     endereco: String(row.endereco ?? ''),
     telefone: String(row.telefone ?? ''),
     email: String(row.email ?? ''),

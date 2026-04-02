@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { calcAgeYears, normalizeBirthToIso } from '../domain/age'
-import { normalizeStudentParentsFromDb } from '../domain/studentParents'
 import {
   DAY_LABELS,
   SLOT_COUNT,
@@ -50,11 +49,8 @@ function emptyResponsible(): Responsible {
 function cloneStudent(b: Student): Student {
   const birthRaw = b.dataNascimento ?? ''
   const birthIso = normalizeBirthToIso(birthRaw) || birthRaw
-  const legacy = b as Student & { filiacao?: string }
-  const parents = normalizeStudentParentsFromDb(legacy.nomePai, legacy.nomeMae, legacy.filiacao)
   const base: Student = {
     ...b,
-    ...parents,
     dataNascimento: birthIso,
     endereco: b.endereco ?? '',
     telefone: b.telefone ?? '',
@@ -135,8 +131,7 @@ export function Matricula() {
         dataNascimento: '',
         rg: '',
         cpf: '',
-        nomePai: '',
-        nomeMae: '',
+        filiacao: '',
         endereco: '',
         telefone: '',
         email: '',
@@ -710,31 +705,14 @@ function MatriculaInner({
               Idade (atualizada ao mudar a data): {age !== null ? `${age} anos` : '—'}
             </span>
           </label>
-          <div className="md:col-span-2 space-y-2">
-            <p className="text-sm font-medium text-slate-700">
-              Filiação <span className="font-normal text-slate-500">(opcional)</span>
-            </p>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                Nome do pai
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-                  value={draft.nomePai}
-                  onChange={(e) => setDraft((d) => ({ ...d, nomePai: e.target.value }))}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Nome da mãe
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-                  value={draft.nomeMae}
-                  onChange={(e) => setDraft((d) => ({ ...d, nomeMae: e.target.value }))}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
-          </div>
+          <label className="text-sm font-medium text-slate-700">
+            Filiação <span className="font-normal text-slate-500">(opcional)</span>
+            <input
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              value={draft.filiacao}
+              onChange={(e) => setDraft((d) => ({ ...d, filiacao: e.target.value }))}
+            />
+          </label>
           <label className="text-sm font-medium text-slate-700">
             RG
             <input

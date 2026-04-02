@@ -450,8 +450,6 @@ app.put('/api/students/:id', async (req: Request, res: Response) => {
         dataNascimento: data.dataNascimento,
         rg: data.rg,
         cpf: data.cpf,
-        nomePai: data.nomePai,
-        nomeMae: data.nomeMae,
         filiacao: data.filiacao,
         endereco: data.endereco,
         telefone: data.telefone,

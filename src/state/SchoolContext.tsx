@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from 'react'
 import { normalizeBirthToIso } from '../domain/age'
-import { normalizeStudentParentsFromDb } from '../domain/studentParents'
 import { buildTwelveMensalidades } from '../domain/installments'
 import {
   allSlotLabels,
@@ -81,17 +80,10 @@ function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
     const st = s as Student & {
       dataCancelamento?: string
       observacoesCancelamento?: string
-      filiacao?: string
     }
-    const parents = normalizeStudentParentsFromDb(
-      typeof st.nomePai === 'string' ? st.nomePai : undefined,
-      typeof st.nomeMae === 'string' ? st.nomeMae : undefined,
-      typeof st.filiacao === 'string' ? st.filiacao : undefined,
-    )
     const status: StudentStatus = st.status === 'inativo' ? 'inativo' : 'ativo'
     return {
       ...s,
-      ...parents,
       dataNascimento: birthIso,
       status,
       dataCancelamento:
@@ -99,6 +91,7 @@ function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
       observacoesCancelamento:
         typeof st.observacoesCancelamento === 'string' ? st.observacoesCancelamento : undefined,
       endereco: typeof s.endereco === 'string' ? s.endereco : '',
+      filiacao: typeof s.filiacao === 'string' ? s.filiacao : '',
       telefone: typeof s.telefone === 'string' ? s.telefone : '',
       email: typeof s.email === 'string' ? s.email : '',
       login: typeof s.login === 'string' ? s.login : '',
