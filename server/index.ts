@@ -571,6 +571,23 @@ app.put('/api/students/:id', async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * Tabela/colunas em falta no Postgres (migração não aplicada) → devolve [] com 200 para o SPA
+ * não ficar com 500 no DevTools; PANIC/ligação Prisma continua a ser 500.
+ */
+function shouldReturnEmptyMensalidadesForSchemaDrift(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/panic|timer has gone away/i.test(msg)) return false
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return e.code === 'P2021' || e.code === 'P2022'
+  }
+  return (
+    (/does not exist|não existe|Could not find the table/i.test(msg) &&
+      /Mensalidade|mensalidade|manual_fine|manual_interest|adjustment_notes/i.test(msg)) ||
+    (/column/i.test(msg) && /does not exist/i.test(msg))
+  )
+}
+
 app.get('/api/mensalidades', async (_req: Request, res: Response) => {
   try {
     const rows = await prisma.mensalidade.findMany({
@@ -578,7 +595,14 @@ app.get('/api/mensalidades', async (_req: Request, res: Response) => {
     })
     res.json(rows.map(mensalidadeFromPrisma))
   } catch (e) {
-    console.error(e)
+    console.error('[api/mensalidades]', e)
+    if (shouldReturnEmptyMensalidadesForSchemaDrift(e)) {
+      console.warn(
+        '[api/mensalidades] schema desatualizado — lista vazia. No Supabase: `npx prisma db push` (com DATABASE_URL) ou SQL em prisma/sql/add_mensalidade_manual_fees.sql',
+      )
+      res.json([])
+      return
+    }
     res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao listar mensalidades' })
   }
 })
