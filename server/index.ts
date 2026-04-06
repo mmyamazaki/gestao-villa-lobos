@@ -6,7 +6,8 @@
 import 'dotenv/config'
 
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import bcrypt from 'bcryptjs'
 import cors from 'cors'
@@ -47,8 +48,35 @@ const port = Number(process.env.PORT || 3000)
 /** Diagnóstico Hostinger: deve aparecer em Runtime logs se o processo arrancar. */
 console.log('BOOT', { port: process.env.PORT, cwd: process.cwd() })
 
-/** `dist/` fica na raiz do projeto; em produção o código compilado vive em dist-server/server/. */
-const distDir = join(process.cwd(), 'dist')
+/**
+ * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file
+ * ou script de arranque), e `join(cwd,'dist')` fica vazio/incompleto — o fallback SPA acaba
+ * por servir `index.html` para `/assets/*.css` e o layout “desaparece”.
+ */
+function resolveDistDir(): string {
+  const here = fileURLToPath(new URL('.', import.meta.url))
+  const candidates = [
+    join(process.cwd(), 'dist'),
+    join(here, '..', 'dist'),
+    join(here, '..', '..', 'dist'),
+  ]
+  for (const d of candidates) {
+    if (existsSync(join(d, 'index.html'))) return d
+  }
+  return candidates[0]!
+}
+
+const distDir = resolveDistDir()
+
+function shouldServeSpaIndexHtml(req: Request): boolean {
+  if (req.method !== 'GET') return false
+  const p = req.path
+  if (p.startsWith('/api')) return false
+  if (p.startsWith('/assets/')) return false
+  if (/\.(css|js|mjs|map|ico|png|jpe?g|gif|webp|svg|avif|woff2?|ttf|eot|txt|pdf|json)$/i.test(p))
+    return false
+  return true
+}
 
 function resolveCorsOrigin(): boolean | string | RegExp | (string | RegExp)[] {
   const raw = process.env.ALLOWED_ORIGINS?.trim()
@@ -577,9 +605,15 @@ app.put('/api/mensalidades/:id', async (req: Request, res: Response) => {
 })
 
 if (existsSync(distDir)) {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) {
+    console.warn(
+      `[api] AVISO: pasta assets ausente em ${assetsDir} — corra npm run build e redeploy (CSS/JS).`,
+    )
+  }
   app.use(express.static(distDir, { index: false }))
   app.use((req: Request, res: Response, next) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+    if (!shouldServeSpaIndexHtml(req)) {
       next()
       return
     }
@@ -587,6 +621,8 @@ if (existsSync(distDir)) {
       if (err) next(err)
     })
   })
+} else {
+  console.warn(`[api] AVISO: dist não encontrada (${distDir}) — só API ou cwd errado.`)
 }
 
 const server = app.listen(port, '0.0.0.0', () => {
@@ -594,7 +630,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log(
     `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://0.0.0.0:${port}`,
   )
-  if (existsSync(distDir)) {
+  if (existsSync(join(distDir, 'index.html'))) {
     console.log(`[api] servindo frontend estático de ${distDir}`)
   }
 })
