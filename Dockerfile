@@ -5,7 +5,7 @@
 #     --build-arg VITE_SUPABASE_URL="https://xxx.supabase.co" \
 #     --build-arg VITE_SUPABASE_ANON_KEY="eyJ..." \
 #     --build-arg VITE_ADMIN_EMAIL="a@b.com" \
-#     --build-arg VITE_ADMIN_PASSWORD="***" \
+# Em runtime defina ADMIN_SESSION_SECRET no orquestrador (não vai no build do Vite).
 #     -t gestao-villa-lobos .
 
 FROM node:20-bookworm-slim AS runner
@@ -27,11 +27,9 @@ ENV API_PORT=${API_PORT}
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ARG VITE_ADMIN_EMAIL
-ARG VITE_ADMIN_PASSWORD
 ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
 ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 ENV VITE_ADMIN_EMAIL=${VITE_ADMIN_EMAIL}
-ENV VITE_ADMIN_PASSWORD=${VITE_ADMIN_PASSWORD}
 
 RUN npm run build
 

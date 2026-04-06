@@ -22,5 +22,5 @@ services:
         sync: false
       - key: VITE_ADMIN_EMAIL
         sync: false
-      - key: VITE_ADMIN_PASSWORD
+      - key: ADMIN_SESSION_SECRET
         sync: false

@@ -7,7 +7,6 @@ export const VITE_ENV_KEYS = [
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
   'VITE_ADMIN_EMAIL',
-  'VITE_ADMIN_PASSWORD',
 ]
 
 /** Obrigatórias em check-quick (prebuild): API + banco — não inclui VITE_*. */

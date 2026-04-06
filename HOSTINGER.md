@@ -19,7 +19,8 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - `NODE_ENV=production`
    - `HOST` no painel é **opcional** — o servidor fixa sempre `0.0.0.0` no código (recomendação do suporte: evitar 503 por bind em `127.0.0.1`).
    - `DATABASE_URL` — connection string do Supabase/Postgres
-   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`, `VITE_ADMIN_PASSWORD`
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
+   - `ADMIN_SESSION_SECRET` (mín. 16 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
    - **`PORT`** — muitos hosts **injeta** automaticamente; confirma nos logs de runtime a linha `listening on http://0.0.0.0:PORT`. Se o painel **não** definir `PORT`, adiciona manualmente a porta que o painel indica (ex.: a mesma do URL interno da app).
    - Não uses `API_PORT` em produção no painel (é só para desenvolvimento local); em produção vale só `PORT`.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)

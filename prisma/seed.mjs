@@ -9,12 +9,12 @@ const prisma = new PrismaClient(
 )
 
 function adminEmail() {
-  const e = process.env.VITE_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'secretaria@escola.br'
+  const e = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || 'secretaria@escola.br'
   return e.trim().toLowerCase()
 }
 
 function adminPlainPassword() {
-  return process.env.VITE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123'
+  return process.env.ADMIN_PASSWORD || process.env.VITE_ADMIN_PASSWORD || 'admin123'
 }
 
 function adminDisplayName() {

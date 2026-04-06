@@ -8,8 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { SchoolState } from '../domain/types'
-import { getPrimaryAdminEmailLower, getPrimaryAdminPasswordFromEnv } from '../lib/adminEnv'
-import { verifyAdminCredentials } from '../services/adminsSupabase'
+import { apiUrl } from '../utils/apiBase'
 
 export type AuthRole = 'admin' | 'teacher' | 'student'
 
@@ -35,6 +34,12 @@ function saveSession(s: Session | null) {
   else localStorage.setItem(AUTH_KEY, JSON.stringify(s))
 }
 
+function clearAdminCookie() {
+  void fetch(apiUrl('/api/auth/admin/logout'), { method: 'POST', credentials: 'include' }).catch(
+    () => undefined,
+  )
+}
+
 type AuthContextValue = {
   session: Session | null
   loginAdmin: (email: string, senha: string) => Promise<boolean>
@@ -52,17 +57,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession(session)
   }, [session])
 
+  /** Sincroniza sessão admin com cookie HttpOnly (valida LS obsoleto; recupera cookie sem LS). */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const stored = loadSession()
+      if (stored?.role === 'admin') {
+        const r = await fetch(apiUrl('/api/auth/admin/me'), { credentials: 'include' })
+        if (cancelled) return
+        if (!r.ok) {
+          setSession(null)
+          saveSession(null)
+        }
+        return
+      }
+      if (!stored) {
+        const r = await fetch(apiUrl('/api/auth/admin/me'), { credentials: 'include' })
+        if (cancelled) return
+        if (r.ok) setSession({ role: 'admin' })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const loginAdmin = useCallback(async (email: string, senha: string) => {
-    const em = email.trim().toLowerCase()
-    if (em === getPrimaryAdminEmailLower() && senha === getPrimaryAdminPasswordFromEnv()) {
-      setSession({ role: 'admin' })
-      return true
+    const r = await fetch(apiUrl('/api/auth/admin/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email: email.trim(), password: senha }),
+    })
+    if (!r.ok) return false
+    let body: { ok?: boolean }
+    try {
+      body = (await r.json()) as { ok?: boolean }
+    } catch {
+      return false
     }
-    if (await verifyAdminCredentials(email, senha)) {
-      setSession({ role: 'admin' })
-      return true
-    }
-    return false
+    if (!body.ok) return false
+    setSession({ role: 'admin' })
+    return true
   }, [])
 
   const loginTeacher = useCallback((login: string, senha: string, state: SchoolState) => {
@@ -71,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (x) => x.login.trim().toLowerCase() === u && x.senha === senha,
     )
     if (!t) return false
+    clearAdminCookie()
     setSession({ role: 'teacher', teacherId: t.id })
     return true
   }, [])
@@ -81,11 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (x) => x.login.trim().toLowerCase() === u && x.senha === senha,
     )
     if (!s) return false
+    clearAdminCookie()
     setSession({ role: 'student', studentId: s.id })
     return true
   }, [])
 
   const logout = useCallback(() => {
+    clearAdminCookie()
     setSession(null)
   }, [])
 

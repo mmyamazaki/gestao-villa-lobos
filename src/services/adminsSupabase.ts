@@ -8,8 +8,6 @@ export type AdminListItem = {
   name: string
 }
 
-type RowWithHash = { password_hash: string }
-
 export async function fetchAdminList(): Promise<{ ok: true; data: AdminListItem[] } | { ok: false; error: string }> {
   const sb = getSupabase()
   if (!sb) {
@@ -107,20 +105,4 @@ export async function deleteAdminInSupabase(
   const { error } = await sb.from('admins').delete().eq('id', admin.id)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
-}
-
-/** Valida e-mail + senha contra a tabela `admins` no Supabase. */
-export async function verifyAdminCredentials(email: string, plainPassword: string): Promise<boolean> {
-  const sb = getSupabase()
-  if (!sb) return false
-  const q = email.trim().toLowerCase()
-  const { data, error } = await sb
-    .from('admins')
-    .select('password_hash')
-    .eq('email', q)
-    .maybeSingle()
-  if (error || !data) return false
-  const row = data as RowWithHash
-  if (typeof row.password_hash !== 'string') return false
-  return bcrypt.compare(plainPassword, row.password_hash)
 }

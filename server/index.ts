@@ -8,6 +8,7 @@ import 'dotenv/config'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
+import bcrypt from 'bcryptjs'
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
 import { Prisma } from '@prisma/client'
@@ -24,9 +25,21 @@ import {
   teacherFromPrisma,
   teacherToPrisma,
 } from './mappers.js'
+import {
+  ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_MAX_AGE_MS,
+  readCookie,
+  signAdminSessionToken,
+  verifyAdminSessionToken,
+} from './adminSession.js'
+
 const app = express()
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
+
+if (NODE_ENV === 'production') {
+  app.set('trust proxy', 1)
+}
 
 /** Padrão Node / Hostinger (Kodee): `process.env.PORT` com fallback 3000 */
 const port = Number(process.env.PORT || 3000)
@@ -76,6 +89,65 @@ app.use(express.json({ limit: '20mb' }))
 
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, service: 'gestao-villa-lobos-api' })
+})
+
+app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
+  try {
+    const emailRaw = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+    const password = typeof req.body?.password === 'string' ? req.body.password : ''
+    if (!emailRaw || !password) {
+      res.status(400).json({ ok: false, error: 'E-mail e senha são obrigatórios.' })
+      return
+    }
+    const admin = await prisma.admin.findUnique({ where: { email: emailRaw } })
+    if (!admin) {
+      res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
+      return
+    }
+    const ok = await bcrypt.compare(password, admin.passwordHash)
+    if (!ok) {
+      res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
+      return
+    }
+    const token = signAdminSessionToken(admin.email)
+    const secure = NODE_ENV === 'production'
+    res.cookie(ADMIN_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: ADMIN_SESSION_MAX_AGE_MS,
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[api/auth/admin/login]', e)
+    res.status(500).json({ ok: false, error: 'Erro no servidor.' })
+  }
+})
+
+app.get('/api/auth/admin/me', (req: Request, res: Response) => {
+  try {
+    const token = readCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
+    if (!token) {
+      res.status(401).json({ ok: false })
+      return
+    }
+    const payload = verifyAdminSessionToken(token)
+    if (!payload) {
+      res.status(401).json({ ok: false })
+      return
+    }
+    res.json({ ok: true, email: payload.email })
+  } catch (e) {
+    console.error('[api/auth/admin/me]', e)
+    res.status(500).json({ ok: false })
+  }
+})
+
+app.post('/api/auth/admin/logout', (_req: Request, res: Response) => {
+  const secure = NODE_ENV === 'production'
+  res.clearCookie(ADMIN_SESSION_COOKIE, { path: '/', secure, sameSite: 'lax' })
+  res.json({ ok: true })
 })
 
 app.get('/api/school/core', async (_req: Request, res: Response) => {
