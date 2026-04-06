@@ -37,6 +37,7 @@ import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
 import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/teacherSupabase'
 import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
+import { fetchMensalidadesFromApiBestEffort } from '../utils/mensalidadesApi'
 import { ensureSchedule, mergeMensalidadesFromServer } from './schoolUtils'
 
 /** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
@@ -528,50 +529,28 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         applyCore(core)
 
         if (!cancelled) {
-          try {
-            const mr = await fetchWithTimeout(apiUrl('/api/mensalidades'), { timeoutMs: 45_000 })
-            if (cancelled || !mr.ok) {
-              /* sem sincronismo remoto */
-            } else {
-              const listUnknown: unknown = await mr.json()
-              const list = Array.isArray(listUnknown)
-                ? (listUnknown as MensalidadeRegistrada[])
-                : []
-              if (list.length > 0) {
-                setState((prev) => ({
-                  ...prev,
-                  mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
-                }))
-              }
-            }
-          } catch {
-            /* API sem mensalidades ou rede */
+          const list = await fetchMensalidadesFromApiBestEffort()
+          if (!cancelled && list.length > 0) {
+            setState((prev) => ({
+              ...prev,
+              mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+            }))
           }
         }
       } catch (e) {
-        console.warn('[SchoolProvider] GET /api/school/core falhou; tentando Supabase se configurado.', e)
+        console.info('[SchoolProvider] API /api/school/core indisponível; tentando Supabase se configurado.', e)
 
         if (isSupabaseConfigured()) {
           try {
             const core = await fetchSchoolCoreFromSupabase()
             applyCore(core)
             if (!cancelled) {
-              try {
-                const mr = await fetchWithTimeout(apiUrl('/api/mensalidades'), { timeoutMs: 45_000 })
-                if (!cancelled && mr.ok) {
-                  const listUnknown: unknown = await mr.json()
-                  const list = Array.isArray(listUnknown)
-                    ? (listUnknown as MensalidadeRegistrada[])
-                    : []
-                  if (list.length > 0) {
-                    setState((prev) => ({
-                      ...prev,
-                      mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
-                    }))
-                  }
-                }
-              } catch {
-                /* ignora */
+              const list = await fetchMensalidadesFromApiBestEffort()
+              if (!cancelled && list.length > 0) {
+                setState((prev) => ({
+                  ...prev,
+                  mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+                }))
               }
             }
             console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')

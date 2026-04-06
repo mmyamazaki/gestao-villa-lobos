@@ -77,7 +77,14 @@ export function Login() {
                 setBusyAdmin(true)
                 try {
                   const result: AdminLoginResult = await loginAdmin(usuario.trim(), senha)
-                  if (result === 'success') return
+                  if (result === 'success' || result === 'success_provisioned') {
+                    if (result === 'success_provisioned') {
+                      window.alert(
+                        'Primeiro administrador criado nesta base. Vá a Configurações, confira os dados e defina uma senha definitiva. Depois remova ADMIN_PROVISIONAL_PASSWORD no painel da hospedagem (Hostinger).',
+                      )
+                    }
+                    return
+                  }
                   if (result === 'invalid')
                     setErro('E-mail ou senha da secretaria inválidos.')
                   else if (result === 'network')

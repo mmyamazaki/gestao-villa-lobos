@@ -33,6 +33,11 @@ import {
   signAdminSessionToken,
   verifyAdminSessionToken,
 } from './adminSession.js'
+import {
+  bootstrapAdminEmailLower,
+  provisionalPasswordMatches,
+  readProvisionalPasswordEnv,
+} from './provisionalAdminAuth.js'
 
 const app = express()
 
@@ -119,6 +124,20 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, service: 'gestao-villa-lobos-api' })
 })
 
+app.get('/api/health/db', async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ ok: true, database: true })
+  } catch (e) {
+    console.error('[api/health/db]', e)
+    res.status(503).json({
+      ok: false,
+      database: false,
+      error: e instanceof Error ? e.message : 'database_unavailable',
+    })
+  }
+})
+
 app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
   try {
     const emailRaw = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
@@ -127,16 +146,56 @@ app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
       res.status(400).json({ ok: false, error: 'E-mail e senha são obrigatórios.' })
       return
     }
-    const admin = await prisma.admin.findUnique({ where: { email: emailRaw } })
+    const provisional = readProvisionalPasswordEnv()
+    let admin = await prisma.admin.findUnique({ where: { email: emailRaw } })
+    let provisioned = false
+
     if (!admin) {
-      res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
-      return
+      const boot = bootstrapAdminEmailLower()
+      const canBootstrap =
+        Boolean(provisional) &&
+        boot === emailRaw &&
+        provisionalPasswordMatches(password, provisional)
+      if (!canBootstrap) {
+        res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
+        return
+      }
+      const passwordHash = await bcrypt.hash(password, 10)
+      const name =
+        process.env.ADMIN_NAME?.trim() ||
+        process.env.ADMIN_BOOTSTRAP_NAME?.trim() ||
+        'Administrador principal'
+      try {
+        admin = await prisma.admin.create({
+          data: { email: emailRaw, name, passwordHash },
+        })
+        provisioned = true
+        console.warn(
+          '[api/auth/admin/login] Primeiro admin criado via ADMIN_PROVISIONAL_PASSWORD. Defina a senha em Configurações e remova ADMIN_PROVISIONAL_PASSWORD do painel.',
+        )
+      } catch (createErr) {
+        console.error('[api/auth/admin/login] Falha ao criar admin (RLS ou permissões?)', createErr)
+        res.status(500).json({
+          ok: false,
+          error:
+            'Não foi possível criar o administrador. No Supabase, desative RLS em `admins` ou rode o seed com DATABASE_URL.',
+        })
+        return
+      }
+    } else {
+      const hashOk = await bcrypt.compare(password, admin.passwordHash)
+      const provOk = provisionalPasswordMatches(password, provisional)
+      if (!hashOk && !provOk) {
+        res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
+        return
+      }
+      if (!hashOk && provOk) {
+        console.warn(
+          '[api/auth/admin/login] Login com ADMIN_PROVISIONAL_PASSWORD. Troque a senha em Configurações e remova a variável no servidor.',
+        )
+      }
     }
-    const ok = await bcrypt.compare(password, admin.passwordHash)
-    if (!ok) {
-      res.status(401).json({ ok: false, error: 'Credenciais inválidas.' })
-      return
-    }
+
     const token = signAdminSessionToken(admin.email)
     const secure = NODE_ENV === 'production'
     res.cookie(ADMIN_SESSION_COOKIE, token, {
@@ -146,7 +205,7 @@ app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
       path: '/',
       maxAge: ADMIN_SESSION_MAX_AGE_MS,
     })
-    res.json({ ok: true })
+    res.json({ ok: true, provisioned })
   } catch (e) {
     console.error('[api/auth/admin/login]', e)
     res.status(500).json({ ok: false, error: 'Erro no servidor.' })

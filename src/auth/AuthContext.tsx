@@ -13,7 +13,12 @@ import { apiUrl } from '../utils/apiBase'
 export type AuthRole = 'admin' | 'teacher' | 'student'
 
 /** Resultado do POST /api/auth/admin/login (o browser não distingue 401 vs 500 sem isto). */
-export type AdminLoginResult = 'success' | 'invalid' | 'server' | 'network'
+export type AdminLoginResult =
+  | 'success'
+  | 'success_provisioned'
+  | 'invalid'
+  | 'server'
+  | 'network'
 
 type Session =
   | { role: 'admin' }
@@ -119,7 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (!body.ok) return 'invalid'
     setSession({ role: 'admin' })
-    return 'success'
+    const provisioned = Boolean((body as { provisioned?: boolean }).provisioned)
+    return provisioned ? 'success_provisioned' : 'success'
   }, [])
 
   const loginTeacher = useCallback((login: string, senha: string, state: SchoolState) => {
