@@ -65,7 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored?.role === 'admin') {
         const r = await fetch(apiUrl('/api/auth/admin/me'), { credentials: 'include' })
         if (cancelled) return
-        if (!r.ok) {
+        let body: { ok?: boolean } = { ok: false }
+        try {
+          body = (await r.json()) as { ok?: boolean }
+        } catch {
+          /* ignore */
+        }
+        if (!body.ok) {
           setSession(null)
           saveSession(null)
         }
@@ -74,7 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!stored) {
         const r = await fetch(apiUrl('/api/auth/admin/me'), { credentials: 'include' })
         if (cancelled) return
-        if (r.ok) setSession({ role: 'admin' })
+        let body: { ok?: boolean } = { ok: false }
+        try {
+          body = (await r.json()) as { ok?: boolean }
+        } catch {
+          /* ignore */
+        }
+        if (body.ok) setSession({ role: 'admin' })
       }
     })()
     return () => {

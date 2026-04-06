@@ -125,16 +125,17 @@ app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
   }
 })
 
+/** 200 + { ok: false } quando não há sessão — evita 401 no DevTools em carregamento normal. */
 app.get('/api/auth/admin/me', (req: Request, res: Response) => {
   try {
     const token = readCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
     if (!token) {
-      res.status(401).json({ ok: false })
+      res.json({ ok: false })
       return
     }
     const payload = verifyAdminSessionToken(token)
     if (!payload) {
-      res.status(401).json({ ok: false })
+      res.json({ ok: false })
       return
     }
     res.json({ ok: true, email: payload.email })
