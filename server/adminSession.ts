@@ -5,16 +5,21 @@ export const ADMIN_SESSION_COOKIE = 'emvl_admin_session'
 const PAYLOAD_VERSION = 1
 export const ADMIN_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
+/** Comprimento mínimo de ADMIN_SESSION_SECRET (variável de ambiente do servidor). */
+export const ADMIN_SESSION_SECRET_MIN_LEN = 8
+
 function getSecret(): string {
   const s = process.env.ADMIN_SESSION_SECRET?.trim()
-  if (s && s.length >= 16) return s
+  if (s && s.length >= ADMIN_SESSION_SECRET_MIN_LEN) return s
   if (process.env.NODE_ENV !== 'production') {
     console.warn(
       '[adminSession] ADMIN_SESSION_SECRET ausente ou curto; usando segredo só para desenvolvimento.',
     )
-    return 'dev-admin-session-secret-min-16-chars!'
+    return 'dev-admin-session-secret-min-8-chars!!'
   }
-  throw new Error('ADMIN_SESSION_SECRET deve estar definido (mín. 16 caracteres) em produção.')
+  throw new Error(
+    `ADMIN_SESSION_SECRET deve estar definido (mín. ${ADMIN_SESSION_SECRET_MIN_LEN} caracteres) em produção.`,
+  )
 }
 
 export function signAdminSessionToken(email: string, maxAgeMs = ADMIN_SESSION_MAX_AGE_MS): string {

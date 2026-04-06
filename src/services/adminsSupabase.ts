@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs'
 import { getSupabase } from '../integrations/supabase/client'
 import { getPrimaryAdminEmailLower } from '../lib/adminEnv'
 
+const MIN_ADMIN_PASSWORD_LEN = 8
+
 export type AdminListItem = {
   id: string
   email: string
@@ -27,7 +29,9 @@ export async function createAdminInSupabase(payload: {
   if (!sb) return { ok: false, error: 'Supabase não configurado.' }
   const email = payload.email.trim().toLowerCase()
   if (!email || !payload.name.trim()) return { ok: false, error: 'E-mail e nome são obrigatórios.' }
-  if (payload.password.length < 6) return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' }
+  if (payload.password.length < MIN_ADMIN_PASSWORD_LEN) {
+    return { ok: false, error: `A senha deve ter pelo menos ${MIN_ADMIN_PASSWORD_LEN} caracteres.` }
+  }
   const password_hash = await bcrypt.hash(payload.password, 10)
   const id = crypto.randomUUID()
   const { error } = await sb.from('admins').insert({
@@ -74,8 +78,8 @@ export async function updateAdminInSupabase(
   }
 
   const pwd = payload.password.trim()
-  if (pwd.length > 0 && pwd.length < 6) {
-    return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' }
+  if (pwd.length > 0 && pwd.length < MIN_ADMIN_PASSWORD_LEN) {
+    return { ok: false, error: `A senha deve ter pelo menos ${MIN_ADMIN_PASSWORD_LEN} caracteres.` }
   }
 
   const update: Record<string, string> = { name, email }

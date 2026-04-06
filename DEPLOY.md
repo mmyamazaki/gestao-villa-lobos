@@ -14,7 +14,7 @@ Subir **um único serviço** que corre `npm run build` e depois `npm start` (Exp
    - **Build command:** `npm ci && npm run build`
    - **Start command:** `npm start`
    - **Health check path:** `/api/health`
-4. No painel, define **todas** as variáveis: `DATABASE_URL`, `API_PORT` (ou só `PORT` se o Render injetar), `VITE_SUPABASE_*`, `VITE_ADMIN_EMAIL`, **`ADMIN_SESSION_SECRET`** (mín. 16 caracteres; login admin no servidor).
+4. No painel, define **todas** as variáveis: `DATABASE_URL`, `API_PORT` (ou só `PORT` se o Render injetar), `VITE_SUPABASE_*`, `VITE_ADMIN_EMAIL`, **`ADMIN_SESSION_SECRET`** (mín. 8 caracteres; login admin no servidor).
 5. Abre o URL que o Render der (ex.: `https://gestao-villa-lobos.onrender.com`) — **aí** o site e a API estão no mesmo domínio.
 
 ### Opção B — Docker (VPS, Fly.io, etc.)
@@ -28,7 +28,7 @@ docker build \
   -t gestao-villa-lobos .
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgresql://..." \
-  -e ADMIN_SESSION_SECRET="string-longa-aleatoria-min-16" \
+  -e ADMIN_SESSION_SECRET="string-min-8-chars" \
   -e PORT=8080 gestao-villa-lobos
 ```
 
