@@ -31,6 +31,12 @@ export function normalizeDatabaseUrlForPrisma(raw) {
       u.port = '5432'
       port = '5432'
       params.delete('pgbouncer')
+      if (!params.has('connection_limit')) params.set('connection_limit', '1')
+    } else if (directDb && port === '6543') {
+      u.port = '5432'
+      port = '5432'
+      params.delete('pgbouncer')
+      if (!params.has('connection_limit')) params.set('connection_limit', '1')
     } else if (port === '6543') {
       if (!params.has('pgbouncer')) params.set('pgbouncer', 'true')
       if (!params.has('connection_limit')) params.set('connection_limit', '1')
