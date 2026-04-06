@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth, type AdminLoginResult } from '../auth/AuthContext'
 import { useSchool } from '../state/SchoolContext'
 
 const field =
@@ -76,8 +76,16 @@ export function Login() {
               if (tipo === 'secretaria') {
                 setBusyAdmin(true)
                 try {
-                  const ok = await loginAdmin(usuario.trim(), senha)
-                  if (!ok) setErro('E-mail ou senha da secretaria inválidos.')
+                  const result: AdminLoginResult = await loginAdmin(usuario.trim(), senha)
+                  if (result === 'success') return
+                  if (result === 'invalid')
+                    setErro('E-mail ou senha da secretaria inválidos.')
+                  else if (result === 'network')
+                    setErro('Sem ligação ao servidor. Verifique a internet e tente de novo.')
+                  else
+                    setErro(
+                      'O servidor da secretaria falhou (erro 500). Não é necessariamente a senha: confira na Hostinger os logs da app, DATABASE_URL e ADMIN_SESSION_SECRET.',
+                    )
                 } finally {
                   setBusyAdmin(false)
                 }

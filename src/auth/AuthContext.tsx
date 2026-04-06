@@ -12,6 +12,9 @@ import { apiUrl } from '../utils/apiBase'
 
 export type AuthRole = 'admin' | 'teacher' | 'student'
 
+/** Resultado do POST /api/auth/admin/login (o browser não distingue 401 vs 500 sem isto). */
+export type AdminLoginResult = 'success' | 'invalid' | 'server' | 'network'
+
 type Session =
   | { role: 'admin' }
   | { role: 'teacher'; teacherId: string }
@@ -42,7 +45,7 @@ function clearAdminCookie() {
 
 type AuthContextValue = {
   session: Session | null
-  loginAdmin: (email: string, senha: string) => Promise<boolean>
+  loginAdmin: (email: string, senha: string) => Promise<AdminLoginResult>
   loginTeacher: (login: string, senha: string, state: SchoolState) => boolean
   loginStudent: (login: string, senha: string, state: SchoolState) => boolean
   logout: () => void
@@ -94,23 +97,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const loginAdmin = useCallback(async (email: string, senha: string) => {
-    const r = await fetch(apiUrl('/api/auth/admin/login'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email: email.trim(), password: senha }),
-    })
-    if (!r.ok) return false
+  const loginAdmin = useCallback(async (email: string, senha: string): Promise<AdminLoginResult> => {
+    let r: Response
+    try {
+      r = await fetch(apiUrl('/api/auth/admin/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: email.trim(), password: senha }),
+      })
+    } catch {
+      return 'network'
+    }
+    if (r.status === 401 || r.status === 400) return 'invalid'
+    if (!r.ok) return 'server'
     let body: { ok?: boolean }
     try {
       body = (await r.json()) as { ok?: boolean }
     } catch {
-      return false
+      return 'server'
     }
-    if (!body.ok) return false
+    if (!body.ok) return 'invalid'
     setSession({ role: 'admin' })
-    return true
+    return 'success'
   }, [])
 
   const loginTeacher = useCallback((login: string, senha: string, state: SchoolState) => {
