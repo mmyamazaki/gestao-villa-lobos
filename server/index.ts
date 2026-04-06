@@ -39,6 +39,18 @@ import {
   readProvisionalPasswordEnv,
 } from './provisionalAdminAuth.js'
 
+const MIN_ADMIN_PASSWORD_LEN = 8
+
+function adminSessionEmailOrNull(req: Request): string | null {
+  const token = readCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
+  if (!token) return null
+  return verifyAdminSessionToken(token)?.email ?? null
+}
+
+function primaryAdminEmailLowerServer(): string | null {
+  return bootstrapAdminEmailLower()
+}
+
 const app = express()
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
@@ -236,6 +248,154 @@ app.post('/api/auth/admin/logout', (_req: Request, res: Response) => {
   const secure = NODE_ENV === 'production'
   res.clearCookie(ADMIN_SESSION_COOKIE, { path: '/', secure, sameSite: 'lax' })
   res.json({ ok: true })
+})
+
+/** CRUD de administradores só com cookie de sessão secretaria — não expor `admins` à chave anon. */
+app.get('/api/admins', async (req: Request, res: Response) => {
+  if (!adminSessionEmailOrNull(req)) {
+    res.status(401).json({ error: 'Não autorizado.' })
+    return
+  }
+  try {
+    const rows = await prisma.admin.findMany({
+      orderBy: { email: 'asc' },
+      select: { id: true, email: true, name: true },
+    })
+    res.json(rows)
+  } catch (e) {
+    console.error('[api/admins GET]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao listar administradores.' })
+  }
+})
+
+app.post('/api/admins', async (req: Request, res: Response) => {
+  if (!adminSessionEmailOrNull(req)) {
+    res.status(401).json({ error: 'Não autorizado.' })
+    return
+  }
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  const email =
+    typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  const password = typeof req.body?.password === 'string' ? req.body.password : ''
+  if (!name || !email) {
+    res.status(400).json({ error: 'Nome e e-mail são obrigatórios.' })
+    return
+  }
+  if (password.length < MIN_ADMIN_PASSWORD_LEN) {
+    res
+      .status(400)
+      .json({ error: `A senha deve ter pelo menos ${MIN_ADMIN_PASSWORD_LEN} caracteres.` })
+    return
+  }
+  try {
+    await prisma.admin.create({
+      data: {
+        email,
+        name,
+        passwordHash: await bcrypt.hash(password, 10),
+      },
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      res.status(400).json({ error: 'Já existe um administrador com este e-mail.' })
+      return
+    }
+    console.error('[api/admins POST]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao criar administrador.' })
+  }
+})
+
+app.patch('/api/admins/:id', async (req: Request, res: Response) => {
+  if (!adminSessionEmailOrNull(req)) {
+    res.status(401).json({ error: 'Não autorizado.' })
+    return
+  }
+  const id = routeParamId(req.params.id)
+  if (!id) {
+    res.status(400).json({ error: 'ID inválido.' })
+    return
+  }
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  const email =
+    typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  const password = typeof req.body?.password === 'string' ? req.body.password : ''
+  if (!name || !email) {
+    res.status(400).json({ error: 'Nome e e-mail são obrigatórios.' })
+    return
+  }
+  if (password.length > 0 && password.length < MIN_ADMIN_PASSWORD_LEN) {
+    res
+      .status(400)
+      .json({ error: `A senha deve ter pelo menos ${MIN_ADMIN_PASSWORD_LEN} caracteres.` })
+    return
+  }
+
+  const primary = primaryAdminEmailLowerServer()
+  try {
+    const existing = await prisma.admin.findUnique({ where: { id } })
+    if (!existing) {
+      res.status(404).json({ error: 'Administrador não encontrado.' })
+      return
+    }
+    const wasPrimary = primary != null && existing.email.toLowerCase() === primary
+    if (wasPrimary && email !== existing.email.toLowerCase()) {
+      res.status(400).json({
+        error:
+          'O e-mail do administrador principal não pode ser alterado (VITE_ADMIN_EMAIL / ADMIN_EMAIL).',
+      })
+      return
+    }
+    if (email !== existing.email.toLowerCase()) {
+      const clash = await prisma.admin.findUnique({ where: { email } })
+      if (clash && clash.id !== id) {
+        res.status(400).json({ error: 'Já existe um administrador com este e-mail.' })
+        return
+      }
+    }
+    const data: { name: string; email: string; passwordHash?: string } = { name, email }
+    if (password.length > 0) {
+      data.passwordHash = await bcrypt.hash(password, 10)
+    }
+    await prisma.admin.update({ where: { id }, data })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      res.status(400).json({ error: 'Já existe um administrador com este e-mail.' })
+      return
+    }
+    console.error('[api/admins PATCH]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao atualizar administrador.' })
+  }
+})
+
+app.delete('/api/admins/:id', async (req: Request, res: Response) => {
+  if (!adminSessionEmailOrNull(req)) {
+    res.status(401).json({ error: 'Não autorizado.' })
+    return
+  }
+  const id = routeParamId(req.params.id)
+  if (!id) {
+    res.status(400).json({ error: 'ID inválido.' })
+    return
+  }
+  const primary = primaryAdminEmailLowerServer()
+  try {
+    const row = await prisma.admin.findUnique({ where: { id } })
+    if (!row) {
+      res.status(404).json({ error: 'Administrador não encontrado.' })
+      return
+    }
+    if (primary != null && row.email.toLowerCase() === primary) {
+      res.status(400).json({ error: 'O administrador principal não pode ser excluído.' })
+      return
+    }
+    await prisma.admin.delete({ where: { id } })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[api/admins DELETE]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao excluir administrador.' })
+  }
 })
 
 app.get('/api/school/core', async (_req: Request, res: Response) => {

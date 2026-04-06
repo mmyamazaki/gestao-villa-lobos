@@ -1,6 +1,6 @@
--- Executar no Supabase → SQL Editor se o fallback do app (leitura via anon key) falhar com "permission denied".
--- Equivale ao GET /api/school/core sem autenticação: qualquer visitante lê cursos/professores/alunos.
--- Ajuste se já tiver políticas (evite duplicar nomes).
+-- ATENÇÃO: expõe cursos/professores/alunos a qualquer pessoa com a anon key (URL do site).
+-- Só para desenvolvimento ou intranet. Em produção pública prefira prisma/sql/rls_secure_production.sql + API Node.
+-- Se executar este ficheiro, ajuste se já existirem políticas (evite duplicar nomes).
 
 ALTER TABLE "Course" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Teacher" ENABLE ROW LEVEL SECURITY;

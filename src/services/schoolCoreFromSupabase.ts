@@ -1,8 +1,7 @@
 /**
- * Carrega o “core” da escola direto do Postgres via Supabase REST (anon key),
- * para quando não existe API Node (ex.: site só estático na Hostinger).
- * Requer políticas RLS que permitam SELECT nas tabelas Course, Teacher, Student para `anon`
- * (equivalente ao GET /api/school/core aberto).
+ * Carrega o “core” da escola via Supabase REST (anon key) — só funciona se RLS permitir SELECT a `anon`.
+ * Em produção segura (ver prisma/sql/rls_secure_production.sql) este fallback falha de propósito:
+ * use sempre a API Node (`/api/school/core`).
  */
 import { getSupabase } from '../integrations/supabase/client'
 import type { Course, Student, Teacher } from '../domain/types'

@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FormActions } from '../components/FormActions'
-import { isSupabaseConfigured } from '../integrations/supabase/client'
 import { getPrimaryAdminEmailLower } from '../lib/adminEnv'
 import {
-  createAdminInSupabase,
-  deleteAdminInSupabase,
+  createAdminInApi,
+  deleteAdminInApi,
   fetchAdminList,
-  updateAdminInSupabase,
+  updateAdminInApi,
   type AdminListItem,
-} from '../services/adminsSupabase'
+} from '../services/adminsApi'
 const field =
   'mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2'
 
@@ -33,12 +32,6 @@ export function Configuracoes() {
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured()) {
-      setLoadError('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env para gerenciar administradores.')
-      setAdmins([])
-      setLoadingList(false)
-      return
-    }
     setLoadingList(true)
     setLoadError('')
     const r = await fetchAdminList()
@@ -59,7 +52,7 @@ export function Configuracoes() {
     setFormError('')
     setIsSaving(true)
     try {
-      const r = await createAdminInSupabase({
+      const r = await createAdminInApi({
         email: newEmail,
         name: newName,
         password: newPassword,
@@ -79,7 +72,7 @@ export function Configuracoes() {
 
   async function handleRemove(a: AdminListItem) {
     if (!window.confirm(`Remover o administrador ${a.name} (${a.email})?`)) return
-    const r = await deleteAdminInSupabase(a)
+    const r = await deleteAdminInApi(a)
     if (!r.ok) {
       window.alert(r.error)
       return
@@ -109,7 +102,7 @@ export function Configuracoes() {
     setEditError('')
     setIsSavingEdit(true)
     try {
-      const r = await updateAdminInSupabase(a, {
+      const r = await updateAdminInApi(a, {
         name: editName,
         email: editEmail,
         password: editPassword,
@@ -130,11 +123,12 @@ export function Configuracoes() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Configurações</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Gerencie os administradores da secretaria (editar, excluir ou adicionar). O administrador
-          principal definido em{' '}
-          <code className="rounded bg-slate-100 px-1 text-xs">VITE_ADMIN_EMAIL</code> continua válido
-          para login mesmo sem registro na lista; não pode ser excluído e o e-mail dele não pode ser
-          alterado aqui.
+          Gerencie os administradores da secretaria pela API do servidor (sessão secretaria). O
+          administrador principal definido em{' '}
+          <code className="rounded bg-slate-100 px-1 text-xs">VITE_ADMIN_EMAIL</code> não pode ser
+          excluído e o e-mail dele não pode ser alterado aqui. No Mac ou em produção, edição total da
+          base continua possível com <code className="rounded bg-slate-100 px-1 text-xs">DATABASE_URL</code>{' '}
+          (Prisma, Supabase SQL ou Table Editor).
         </p>
       </div>
 
@@ -146,7 +140,7 @@ export function Configuracoes() {
           </p>
         )}
         {loadingList && !loadError && <p className="mt-4 text-sm text-slate-500">Carregando…</p>}
-        {!loadingList && isSupabaseConfigured() && (
+        {!loadingList && (
           <ul className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-100">
             {admins.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-slate-500">Nenhum registro na tabela admins.</li>
@@ -261,7 +255,7 @@ export function Configuracoes() {
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-base font-semibold text-slate-900">Adicionar novo administrador</h3>
         <p className="mt-1 text-sm text-slate-600">
-          A senha é armazenada apenas como hash (bcrypt) no Supabase. Mínimo 8 caracteres.
+          A senha é gravada como hash (bcrypt) no Postgres pelo servidor. Mínimo 8 caracteres.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
