@@ -28,6 +28,9 @@ DROP POLICY IF EXISTS "anon_select_teacher" ON "Teacher";
 DROP POLICY IF EXISTS "anon_select_student" ON "Student";
 DROP POLICY IF EXISTS "anon_insert_teacher" ON "Teacher";
 DROP POLICY IF EXISTS "anon_update_teacher" ON "Teacher";
+DROP POLICY IF EXISTS "anon_select_mensalidade" ON "Mensalidade";
+DROP POLICY IF EXISTS "anon_insert_mensalidade" ON "Mensalidade";
+DROP POLICY IF EXISTS "anon_update_mensalidade" ON "Mensalidade";
 
 -- Se criou políticas anónimas noutras tabelas, DROP aqui antes de confiar no bloqueio total.
 

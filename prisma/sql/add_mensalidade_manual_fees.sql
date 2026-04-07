@@ -1,5 +1,6 @@
 -- Supabase SQL: colunas de multa/juros manuais e observação (após pagamento).
--- Execute no Editor SQL se não usar `prisma db push`.
+-- Migração versionada: prisma/migrations/20260402140000_add_mensalidade_manual_fees/
+-- Ou: npx prisma migrate deploy (produção) / prisma db push (dev).
 
 ALTER TABLE "Mensalidade"
   ADD COLUMN IF NOT EXISTS "manual_fine" DECIMAL(12, 2),

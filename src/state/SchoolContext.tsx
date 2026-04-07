@@ -38,7 +38,7 @@ import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/tea
 import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
 import {
-  fetchMensalidadesFromApiBestEffort,
+  fetchMensalidadesRemoteBestEffort,
   pushMensalidadesToApi,
 } from '../utils/mensalidadesApi'
 import { ensureSchedule, mergeMensalidadesFromServer } from './schoolUtils'
@@ -558,7 +558,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         applyCore(core)
 
         if (!cancelled) {
-          const list = await fetchMensalidadesFromApiBestEffort()
+          const list = await fetchMensalidadesRemoteBestEffort()
           if (!cancelled) {
             setState((prev) => ({
               ...prev,
@@ -574,7 +574,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             const core = await fetchSchoolCoreFromSupabase()
             applyCore(core)
             if (!cancelled) {
-              const list = await fetchMensalidadesFromApiBestEffort()
+              const list = await fetchMensalidadesRemoteBestEffort()
               if (!cancelled) {
                 setState((prev) => ({
                   ...prev,
@@ -917,24 +917,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         }
       })
       if (!merged) return
-
-      try {
-        const res = await fetchWithTimeout(
-          apiUrl(`/api/mensalidades/${encodeURIComponent(mensalidadeId)}`),
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(merged),
-            timeoutMs: 90_000,
-          },
-        )
-        if (!res.ok) {
-          const t = await res.text().catch(() => '')
-          console.warn('[SchoolProvider] PUT /api/mensalidades falhou', res.status, t.slice(0, 200))
-        }
-      } catch (e) {
-        console.warn('[SchoolProvider] PUT /api/mensalidades', e)
-      }
+      void pushMensalidadesToApi([merged])
     },
     [],
   )
