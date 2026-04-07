@@ -126,7 +126,12 @@ export function Financeiro() {
 
   const finalizePayment = async (
     m: MensalidadeRegistrada,
-    patch: { manualFine: number; manualInterest: number; adjustmentNotes?: string },
+    patch: {
+      manualFine: number
+      manualInterest: number
+      adjustmentNotes?: string
+      liquidAmount?: number
+    },
   ) => {
     const d = paymentDate.slice(0, 10)
     await registerMensalidadePayment(m.id, {
@@ -134,11 +139,13 @@ export function Financeiro() {
       manualFine: m.waivesLateFees ? 0 : patch.manualFine,
       manualInterest: m.waivesLateFees ? 0 : patch.manualInterest,
       adjustmentNotes: patch.adjustmentNotes,
+      ...(patch.liquidAmount != null ? { liquidAmount: patch.liquidAmount } : {}),
     })
     const paid: MensalidadeRegistrada = {
       ...m,
       paidAt: d,
       status: 'pago',
+      liquidAmount: patch.liquidAmount ?? m.liquidAmount,
       manualFine: m.waivesLateFees ? undefined : patch.manualFine,
       manualInterest: m.waivesLateFees ? undefined : patch.manualInterest,
       adjustmentNotes: patch.adjustmentNotes?.trim() || undefined,

@@ -37,7 +37,10 @@ import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
 import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/teacherSupabase'
 import { apiUrl } from '../utils/apiBase'
 import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
-import { fetchMensalidadesFromApiBestEffort } from '../utils/mensalidadesApi'
+import {
+  fetchMensalidadesFromApiBestEffort,
+  pushMensalidadesToApi,
+} from '../utils/mensalidadesApi'
 import { ensureSchedule, mergeMensalidadesFromServer } from './schoolUtils'
 
 /** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
@@ -351,14 +354,38 @@ function replaceMensalidadesForStudent(state: SchoolState, student: Student): Sc
   ).map((r) => {
     const o = oldByParcel.get(r.parcelNumber)
     if (o?.paidAt) {
-      return { ...r, id: o.id, paidAt: o.paidAt, status: 'pago' as const }
+      return {
+        ...r,
+        id: o.id,
+        paidAt: o.paidAt,
+        status: 'pago' as const,
+        manualFine: o.manualFine,
+        manualInterest: o.manualInterest,
+        adjustmentNotes: o.adjustmentNotes,
+        liquidAmount: o.liquidAmount,
+      }
     }
     if (o?.status === 'cancelado') {
       const today = new Date().toISOString().slice(0, 10)
       if (student.status === 'ativo' && o.dueDate >= today) {
-        return { ...r, id: o.id, status: 'pendente' as const }
+        return {
+          ...r,
+          id: o.id,
+          status: 'pendente' as const,
+          liquidAmount: o.liquidAmount,
+          discountPercent: o.discountPercent,
+        }
       }
       return { ...r, id: o.id, status: 'cancelado' as const }
+    }
+    if (o && !o.paidAt) {
+      return {
+        ...r,
+        id: o.id,
+        status: 'pendente' as const,
+        liquidAmount: o.liquidAmount,
+        discountPercent: o.discountPercent,
+      }
     }
     return { ...r, status: 'pendente' as const }
   })
@@ -427,6 +454,8 @@ export type SchoolContextValue = {
       manualFine: number
       manualInterest: number
       adjustmentNotes?: string
+      /** Quando o pagamento não está em atraso: valor líquido efetivo (desconto extra, etc.). */
+      liquidAmount?: number
     },
   ) => Promise<void>
   saveLessonLog: (payload: {
@@ -530,7 +559,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
         if (!cancelled) {
           const list = await fetchMensalidadesFromApiBestEffort()
-          if (!cancelled && list.length > 0) {
+          if (!cancelled) {
             setState((prev) => ({
               ...prev,
               mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
@@ -546,7 +575,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             applyCore(core)
             if (!cancelled) {
               const list = await fetchMensalidadesFromApiBestEffort()
-              if (!cancelled && list.length > 0) {
+              if (!cancelled) {
                 setState((prev) => ({
                   ...prev,
                   mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
@@ -830,6 +859,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         throw new Error(msg)
       }
       setState(r.state)
+      const synced = r.state.mensalidades.filter((x) => x.studentId === nextStudent.id)
+      if (synced.length > 0) {
+        void pushMensalidadesToApi(synced)
+      }
       return { ok: true as const }
     } catch (e) {
       return {
@@ -850,6 +883,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         manualFine: number
         manualInterest: number
         adjustmentNotes?: string
+        liquidAmount?: number
       },
     ) => {
       const d = payload.paidDate.slice(0, 10)
@@ -859,6 +893,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         throw new Error('Multa e juros devem ser números válidos.')
       }
       const notes = payload.adjustmentNotes?.trim() || undefined
+      const liq =
+        payload.liquidAmount != null && Number.isFinite(payload.liquidAmount)
+          ? Math.round(Number(payload.liquidAmount) * 100) / 100
+          : null
 
       let merged: MensalidadeRegistrada | null = null
       setState((prev) => {
@@ -871,6 +909,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           manualFine: fine,
           manualInterest: interest,
           adjustmentNotes: notes,
+          ...(liq != null ? { liquidAmount: liq } : {}),
         }
         return {
           ...prev,

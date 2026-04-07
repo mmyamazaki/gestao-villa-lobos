@@ -15,6 +15,7 @@ type Props = {
     manualFine: number
     manualInterest: number
     adjustmentNotes?: string
+    liquidAmount?: number
   }) => void | Promise<void>
 }
 
@@ -44,6 +45,10 @@ function PaymentMensalidadeModalForm({
     return system.isLate ? round2(system.interest) : 0
   }, [m.waivesLateFees, system.isLate, system.interest])
 
+  const defaultLiquid = m.liquidAmount
+  const liquidEditable = !system.isLate
+
+  const [liquidStr, setLiquidStr] = useState(() => defaultLiquid.toFixed(2))
   const [fineStr, setFineStr] = useState(() =>
     m.waivesLateFees ? '0.00' : defaultFine.toFixed(2),
   )
@@ -55,33 +60,54 @@ function PaymentMensalidadeModalForm({
 
   const fine = round2(parseFloat(fineStr.replace(',', '.')) || 0)
   const interest = round2(parseFloat(interestStr.replace(',', '.')) || 0)
+  const liquidEff = liquidEditable
+    ? round2(parseFloat(liquidStr.replace(',', '.')) || 0)
+    : round2(m.liquidAmount)
 
-  /** Em atraso: encargos sobre o bruto. Em dia: líquido + encargos manuais (exceções / acertos). */
+  /** Em atraso: encargos sobre o bruto. Em dia (ou 1ª parcela): líquido editável + multa/juros opcionais. */
   const total = useMemo(() => {
-    if (m.waivesLateFees) return m.liquidAmount
+    if (m.waivesLateFees) return liquidEff
     if (system.isLate) return round2(m.baseAmount + fine + interest)
-    return round2(m.liquidAmount + fine + interest)
-  }, [m.liquidAmount, m.baseAmount, m.waivesLateFees, system.isLate, fine, interest])
+    return round2(liquidEff + fine + interest)
+  }, [
+    m.waivesLateFees,
+    m.baseAmount,
+    system.isLate,
+    liquidEff,
+    fine,
+    interest,
+  ])
 
+  const liquidChanged = liquidEditable && round2(liquidEff) !== round2(defaultLiquid)
   const needsNote =
-    !m.waivesLateFees &&
-    (round2(fine) !== defaultFine || round2(interest) !== defaultInterest)
+    (!m.waivesLateFees &&
+      (round2(fine) !== defaultFine || round2(interest) !== defaultInterest)) ||
+    liquidChanged
 
   const handleConfirm = async () => {
     setSubmitErr(null)
     if (needsNote && !notes.trim()) {
-      setSubmitErr('Descreva o motivo da alteração em multa/juros em “Observações da alteração”.')
+      setSubmitErr(
+        'Descreva o motivo do ajuste (valor líquido, multa ou juros) em “Observações”.',
+      )
       return
     }
     if (fine < 0 || interest < 0) {
       setSubmitErr('Multa e juros não podem ser negativos.')
       return
     }
+    if (liquidEditable) {
+      if (liquidEff < 0 || liquidEff > round2(m.baseAmount) + 1e-9) {
+        setSubmitErr('Valor líquido deve estar entre 0 e o bruto da parcela.')
+        return
+      }
+    }
     try {
       await onConfirm({
         manualFine: fine,
         manualInterest: interest,
         adjustmentNotes: notes.trim() || undefined,
+        ...(liquidEditable ? { liquidAmount: liquidEff } : {}),
       })
       onClose()
     } catch {
@@ -125,22 +151,48 @@ function PaymentMensalidadeModalForm({
               Bruto:{' '}
               <span className="font-medium tabular-nums">R$ {m.baseAmount.toFixed(2)}</span>
             </p>
-            <p>
-              Líquido (parcela):{' '}
-              <span className="font-medium tabular-nums">R$ {m.liquidAmount.toFixed(2)}</span>
-            </p>
-            {system.isLate ? (
+            {!liquidEditable && (
+              <p>
+                Líquido (contrato):{' '}
+                <span className="font-medium tabular-nums">R$ {m.liquidAmount.toFixed(2)}</span>
+              </p>
+            )}
+            {m.waivesLateFees ? (
               <p className="col-span-2">
-                Atraso: <span className="font-semibold">{system.late}</span> dia(s) — por padrão multa/juros
-                sobre o <strong>valor bruto</strong>; pode alterar abaixo e registrar o motivo em observações.
+                1ª parcela: sem multa/juros no cadastro. Ajuste o <strong>valor líquido</strong> abaixo
+                para desconto extra, se houver.
+              </p>
+            ) : system.isLate ? (
+              <p className="col-span-2">
+                Atraso: <span className="font-semibold">{system.late}</span> dia(s) — total padrão é{' '}
+                <strong>bruto + multa + juros</strong>; o líquido contratual é só referência aqui.
               </p>
             ) : (
               <p className="col-span-2">
-                Sem atraso: total padrão é o <strong>líquido</strong>. Multa/juros podem ser usados em casos
-                excepcionais (acréscimo ou ajuste) — descreva em observações.
+                Em dia: informe o <strong>valor líquido</strong> da baixa (pode ser menor que o padrão
+                para desconto extra) e, se precisar, multa/juros excepcionais.
               </p>
             )}
           </div>
+
+          {liquidEditable && (
+            <label className="block text-xs font-medium text-slate-700">
+              Valor líquido desta baixa (R$)
+              <input
+                type="number"
+                min={0}
+                max={m.baseAmount}
+                step={0.01}
+                value={liquidStr}
+                onChange={(e) => setLiquidStr(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm tabular-nums outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+              />
+              <span className="mt-0.5 block text-[10px] text-slate-500">
+                Valor de referência (contrato): R$ {round2(defaultLiquid).toFixed(2)} · teto: bruto R${' '}
+                {m.baseAmount.toFixed(2)}
+              </span>
+            </label>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium text-slate-700">
@@ -186,6 +238,11 @@ function PaymentMensalidadeModalForm({
             <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
               R$ {total.toFixed(2)}
             </p>
+            {m.waivesLateFees && (
+              <p className="mt-1 text-[11px] text-slate-600">
+                = valor líquido da baixa (R$ {liquidEff.toFixed(2)})
+              </p>
+            )}
             {!m.waivesLateFees && system.isLate && (
               <p className="mt-1 text-[11px] text-slate-600">
                 = bruto (R$ {m.baseAmount.toFixed(2)}) + multa + juros
@@ -193,7 +250,7 @@ function PaymentMensalidadeModalForm({
             )}
             {!m.waivesLateFees && !system.isLate && (fine > 0 || interest > 0) && (
               <p className="mt-1 text-[11px] text-slate-600">
-                = líquido (R$ {m.liquidAmount.toFixed(2)}) + multa + juros
+                = líquido (R$ {liquidEff.toFixed(2)}) + multa + juros
               </p>
             )}
           </div>
@@ -201,7 +258,9 @@ function PaymentMensalidadeModalForm({
           <label className="block text-xs font-semibold text-slate-800">
             Observações{' '}
             {needsNote ? (
-              <span className="font-bold text-amber-900">(obrigatório se multa/juros ≠ calculado/padrão)</span>
+              <span className="font-bold text-amber-900">
+                (obrigatório se alterar líquido, multa ou juros em relação ao padrão)
+              </span>
             ) : (
               <span className="font-normal text-slate-600">(opcional — desconto extra, acordo, etc.)</span>
             )}

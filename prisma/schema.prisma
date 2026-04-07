@@ -1,5 +1,6 @@
 // Schema PostgreSQL (Supabase). Cursos, professores e alunos são persistidos via API + Prisma.
-// Parcelas, logs e reposições permanecem no armazenamento local do navegador até migração futura.
+// Parcelas: persistidas na tabela Mensalidade (API PUT ao salvar matrícula e ao registrar pagamento).
+// Logs e reposições ainda podem usar apenas o armazenamento local do navegador.
 
 generator client {
   provider = "prisma-client-js"
