@@ -175,6 +175,15 @@ function MatriculaInner({
   const { state, saveStudent, getTeacher, getCourse } = school
 
   const [draft, setDraft] = useState(() => cloneStudent(baseline))
+  /**
+   * Snapshot JSON do aluno conforme último PUT /api/students bem-sucedido (ou baseline ao abrir edição).
+   * O PDF só é permitido quando `draft` é igual a isto — evita contrato local sem registo na base.
+   */
+  const [lastPersistedJson, setLastPersistedJson] = useState<string | null>(() =>
+    mode === 'edit' ? JSON.stringify(baseline) : null,
+  )
+  const savedToServer =
+    lastPersistedJson != null && JSON.stringify(draft) === lastPersistedJson
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -1309,6 +1318,7 @@ function MatriculaInner({
                 window.alert(result.message)
                 return
               }
+              setLastPersistedJson(JSON.stringify(toSave))
               onDone()
             } catch {
               const msg = 'Erro ao salvar. Verifique sua conexão ou os campos obrigatórios.'
@@ -1321,10 +1331,28 @@ function MatriculaInner({
         />
         {draft.enrollment && teacher && getCourse(draft.enrollment.courseId) && (
           <>
+            {!savedToServer && (
+              <p className="w-full text-sm text-amber-800">
+                Salve a matrícula antes do PDF: só assim o aluno fica gravado no servidor e aparece noutros
+                computadores ou browsers.
+              </p>
+            )}
             <button
               type="button"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+              disabled={!savedToServer}
+              title={
+                savedToServer
+                  ? undefined
+                  : 'Use Salvar matrícula primeiro para gravar no servidor.'
+              }
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => {
+                if (!savedToServer) {
+                  window.alert(
+                    'Grave a matrícula no servidor com «Salvar matrícula» antes do contrato. Sem isso, o PDF pode ser gerado mas o aluno não existe na base para outros PCs.',
+                  )
+                  return
+                }
                 const en = buildEnrollment()
                 if (!en) {
                   window.alert('Complete a matrícula antes de gerar o PDF.')
@@ -1340,8 +1368,13 @@ function MatriculaInner({
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+              disabled={!savedToServer}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => {
+                if (!savedToServer) {
+                  window.alert('Salve a matrícula no servidor antes de gerar o recibo.')
+                  return
+                }
                 const first = state.mensalidades.find(
                   (m) => m.studentId === draft.id && m.parcelNumber === 1,
                 )
