@@ -44,14 +44,17 @@ export function computeStudentParcelView(
     const due = startOfDay(parseISO(m.dueDate))
     const disc = m.baseAmount - m.liquidAmount
     if (m.waivesLateFees || pay <= due) {
+      const multa = m.waivesLateFees ? 0 : m.manualFine != null ? m.manualFine : 0
+      const juros = m.waivesLateFees ? 0 : m.manualInterest != null ? m.manualInterest : 0
+      const total = Math.round((m.liquidAmount + multa + juros) * 100) / 100
       return {
         m,
         status: 'pago',
         valorBruto: m.baseAmount,
         descontoReais: disc,
-        multa: 0,
-        juros: 0,
-        total: m.liquidAmount,
+        multa,
+        juros,
+        total,
         diasAtraso: 0,
       }
     }

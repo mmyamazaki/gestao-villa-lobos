@@ -73,10 +73,10 @@ export async function generateMensalidadeReceiptPdf(
     } else {
       diasAtraso = daysLateAfterDueDate(pay, due)
       if (diasAtraso <= 0) {
-        multa = 0
-        juros = 0
-        total = m.liquidAmount
+        multa = m.manualFine != null ? m.manualFine : 0
+        juros = m.manualInterest != null ? m.manualInterest : 0
         descontoReais = m.baseAmount - m.liquidAmount
+        total = Math.round((m.liquidAmount + multa + juros) * 100) / 100
       } else {
         descontoReais = 0
         const auto = lateFeesOnGross(m.baseAmount, diasAtraso)
