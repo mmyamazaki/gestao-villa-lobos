@@ -153,6 +153,12 @@ export function Financeiro() {
     void generateMensalidadeReceiptPdf(paid, { kind: 'payment', paymentDate: d })
   }
 
+  const reprintPaymentReceipt = (m: MensalidadeRegistrada) => {
+    const d = m.paidAt?.slice(0, 10)
+    if (!d) return
+    void generateMensalidadeReceiptPdf(m, { kind: 'payment', paymentDate: d })
+  }
+
   return (
     <div className="space-y-6">
       <PaymentMensalidadeModal
@@ -175,7 +181,8 @@ export function Financeiro() {
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Financeiro</h2>
         <p className="mt-1 text-sm text-slate-600">
           Indicadores globais abaixo. O extrato de mensalidades é exibido somente após você buscar e
-          selecionar um aluno. PDFs (recibo) são gerados apenas ao clicar nos botões correspondentes.
+          selecionar um aluno. Recibos: ao quitar uma parcela ou pelo botão <strong>Reimprimir recibo</strong>{' '}
+          nas linhas já pagas.
         </p>
       </div>
 
@@ -429,7 +436,16 @@ export function Financeiro() {
                 {m.status === 'cancelado' ? (
                   <span className="text-xs text-slate-500">Sem ação disponível</span>
                 ) : m.paidAt ? (
-                  <span className="text-xs text-slate-500">Quitada em {m.paidAt}</span>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-slate-500">Quitada em {m.paidAt}</span>
+                    <button
+                      type="button"
+                      className="inline-flex min-h-[44px] w-fit items-center rounded-md border border-[#003366] bg-white px-3 py-2 text-xs font-medium text-[#003366] hover:bg-slate-50"
+                      onClick={() => reprintPaymentReceipt(m)}
+                    >
+                      Reimprimir recibo
+                    </button>
+                  </div>
                 ) : (
                   <button
                     type="button"
@@ -547,7 +563,16 @@ export function Financeiro() {
                     {m.status === 'cancelado' ? (
                       <span className="text-xs text-slate-500">—</span>
                     ) : m.paidAt ? (
-                      <span className="text-xs text-slate-500">Quitada em {m.paidAt}</span>
+                      <div className="flex min-w-[140px] flex-col gap-1.5">
+                        <span className="text-xs text-slate-500">Quitada em {m.paidAt}</span>
+                        <button
+                          type="button"
+                          className="w-fit rounded-md border border-[#003366] bg-white px-2.5 py-1.5 text-xs font-medium text-[#003366] hover:bg-slate-50"
+                          onClick={() => reprintPaymentReceipt(m)}
+                        >
+                          Reimprimir recibo
+                        </button>
+                      </div>
                     ) : (
                       <button
                         type="button"
