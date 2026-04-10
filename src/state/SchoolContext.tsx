@@ -55,42 +55,14 @@ function coursesPayloadForPut(courses: Course[]): Course[] {
   }))
 }
 
-/** Apenas dados secundários (parcelas, logs, etc.). Cursos/professores/alunos vêm da API + Prisma. */
+/** Apenas dados secundários (parcelas, logs, etc.). */
 const STORAGE_KEY_LEGACY = 'emvl-musica-villa-lobos-v1'
 const STORAGE_KEY_SECONDARY = 'emvl-musica-villa-lobos-secondary-v2'
+/** Último snapshot válido de core remoto (cursos/professores/alunos) para contingência offline/API instável. */
+const STORAGE_KEY_CORE_CACHE = 'emvl-musica-villa-lobos-core-cache-v1'
 
 function uniqueInstrumentSlugs(courses: Course[]) {
   return [...new Set(courses.map((c) => c.instrument))]
-}
-
-function hydrateStudentsFromMensalidades(
-  students: Student[],
-  mensalidades: MensalidadeRegistrada[],
-): Student[] {
-  if (mensalidades.length === 0) return students
-  const byId = new Map(students.map((s) => [s.id, s] as const))
-  for (const m of mensalidades) {
-    const studentId = (m.studentId ?? '').trim()
-    if (!studentId || byId.has(studentId)) continue
-    const fallbackCode = `AUTO-${studentId.slice(0, 6).toUpperCase()}`
-    byId.set(studentId, {
-      id: studentId,
-      codigo: fallbackCode,
-      nome: (m.studentNome ?? '').trim() || fallbackCode,
-      dataNascimento: '',
-      rg: '',
-      cpf: '',
-      filiacao: '',
-      endereco: '',
-      telefone: '',
-      email: '',
-      login: '',
-      senha: '',
-      enrollment: null,
-      status: 'ativo',
-    })
-  }
-  return [...byId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
 function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
@@ -225,6 +197,21 @@ function loadSecondaryPartial(): Partial<SchoolState> | null {
   }
 }
 
+function loadCoreCachePartial(): Pick<SchoolState, 'courses' | 'teachers' | 'students'> | null {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY_CORE_CACHE)
+    if (!s) return null
+    const parsed = JSON.parse(s) as Partial<SchoolState>
+    return {
+      courses: parsed.courses ?? [],
+      teachers: parsed.teachers ?? [],
+      students: parsed.students ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
 function saveSecondary(st: SchoolState) {
   const payload = {
     mensalidades: st.mensalidades,
@@ -233,6 +220,15 @@ function saveSecondary(st: SchoolState) {
     settings: st.settings,
   }
   localStorage.setItem(STORAGE_KEY_SECONDARY, JSON.stringify(payload))
+}
+
+function saveCoreCache(st: Pick<SchoolState, 'courses' | 'teachers' | 'students'>) {
+  const payload = {
+    courses: st.courses,
+    teachers: st.teachers,
+    students: st.students,
+  }
+  localStorage.setItem(STORAGE_KEY_CORE_CACHE, JSON.stringify(payload))
 }
 
 function clearStudentFromAllSchedules(teachers: Teacher[], studentId: string): Teacher[] {
@@ -522,11 +518,12 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
   const [state, setState] = useState<SchoolState>(() => {
     const sec = loadSecondaryPartial()
+    const core = loadCoreCachePartial()
     return normalizeState({
       ...sec,
-      courses: [],
-      teachers: [],
-      students: [],
+      courses: core?.courses ?? [],
+      teachers: core?.teachers ?? [],
+      students: core?.students ?? [],
     } as Partial<SchoolState>)
   })
   stateRef.current = state
@@ -564,6 +561,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             }),
           )
         })
+        if (core.students.length > 0 || core.courses.length > 0 || core.teachers.length > 0) {
+          saveCoreCache({
+            courses: core.courses,
+            teachers: core.teachers,
+            students: core.students,
+          })
+        }
       }
 
       const warnIfCoreWithoutStudentsButMensalidades = (
@@ -617,18 +621,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           const list = await fetchMensalidadesRemoteBestEffort()
           warnIfCoreWithoutStudentsButMensalidades(core, list)
           if (!cancelled) {
-            setState((prev) => {
-              const mergedMensalidades = mergeMensalidadesFromServer(prev.mensalidades, list)
-              const fallbackStudents =
-                core.students.length === 0
-                  ? hydrateStudentsFromMensalidades(prev.students, mergedMensalidades)
-                  : prev.students
-              return reconcileTeacherSchedulesWithStudents({
-                ...prev,
-                students: fallbackStudents,
-                mensalidades: mergedMensalidades,
-              })
-            })
+            setState((prev) => ({
+              ...prev,
+              mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+            }))
           }
         }
       } catch (e) {
@@ -642,18 +638,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               const list = await fetchMensalidadesRemoteBestEffort()
               warnIfCoreWithoutStudentsButMensalidades(core, list)
               if (!cancelled) {
-                setState((prev) => {
-                  const mergedMensalidades = mergeMensalidadesFromServer(prev.mensalidades, list)
-                  const fallbackStudents =
-                    core.students.length === 0
-                      ? hydrateStudentsFromMensalidades(prev.students, mergedMensalidades)
-                      : prev.students
-                  return reconcileTeacherSchedulesWithStudents({
-                    ...prev,
-                    students: fallbackStudents,
-                    mensalidades: mergedMensalidades,
-                  })
-                })
+                setState((prev) => ({
+                  ...prev,
+                  mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+                }))
               }
             }
             console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')
