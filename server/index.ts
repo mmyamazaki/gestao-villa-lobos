@@ -1068,12 +1068,15 @@ export async function start(): Promise<void> {
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(
-          `[api] Porta ${port} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
+        console.warn(
+          `[api] Porta ${port} já em uso — outra instância está a servir; esta cópia termina (código 0).`,
         )
-      } else {
-        console.error('[api] Erro ao abrir o servidor:', err.message)
+        releaseBootLockIfHeld()
+        reject(err)
+        process.exit(0)
+        return
       }
+      console.error('[api] Erro ao abrir o servidor:', err.message)
       releaseBootLockIfHeld()
       reject(err)
       process.exit(1)

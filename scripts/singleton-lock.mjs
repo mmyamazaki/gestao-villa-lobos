@@ -42,15 +42,6 @@ function pidIsLiveNonZombie(pid) {
 
 export async function acquireSingletonLock() {
   const lockPath = join(process.cwd(), LOCK_BASENAME)
-  const release = () => {
-    try {
-      if (!existsSync(lockPath)) return
-      const cur = readFileSync(lockPath, 'utf8').trim()
-      if (cur === String(process.pid)) unlinkSync(lockPath)
-    } catch {
-      /* ignore */
-    }
-  }
 
   try {
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -58,8 +49,12 @@ export async function acquireSingletonLock() {
         const fd = openSync(lockPath, 'wx')
         writeSync(fd, `${process.pid}\n`, 'utf8')
         closeSync(fd)
-        process.once('SIGTERM', release)
-        process.once('SIGINT', release)
+        /**
+         * Não libertar o lock em SIGTERM/SIGINT: no redeploy o painel manda SIGTERM ao processo
+         * antigo e arranca outro logo a seguir. Se apagarmos o lock aqui, o novo processo
+         * obtém lock enquanto o antigo **ainda escuta** na porta → dois LISTENING → 503 no proxy.
+         * O ficheiro fica com o PID até o processo morrer; o próximo arranque remove lock obsoleto.
+         */
         return true
       } catch (e) {
         if (e?.code !== 'EEXIST') {
