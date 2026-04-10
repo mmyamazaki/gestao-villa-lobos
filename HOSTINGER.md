@@ -21,8 +21,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
-   - **`PORT`** — muitos hosts **injeta** automaticamente; confirma nos logs de runtime a linha `listening on http://0.0.0.0:PORT`. Se o painel **não** definir `PORT`, adiciona manualmente a porta que o painel indica (ex.: a mesma do URL interno da app).
-   - Não uses `API_PORT` em produção no painel (é só para desenvolvimento local); em produção vale só `PORT`.
+   - **`PORT`** ou **`API_PORT`** — a app usa **`PORT` primeiro**; se não existir, usa **`API_PORT`** (comum na Hostinger com valor **3000**), senão **3000**. O proxy tem de apontar para a mesma porta que aparece no log `LISTENING`.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
 
@@ -52,7 +51,7 @@ Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão*
 - **`index.js`** na raiz (entrada principal); **`server.js`** reexporta para painéis antigos que fixam esse nome.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
-- Escuta com `app.listen(port, listenHost)` onde em **produção** `port = PORT do painel ou 3000` (**`API_PORT` não conta**); em desenvolvimento entra `API_PORT` se `PORT` estiver vazio.
+- Escuta com `app.listen(port, listenHost)` onde `port = PORT` (se existir) **ou** `API_PORT` **ou** `3000` — alinha com painéis que só expõem `API_PORT`.
 
 ## Se não aparecer “Node.js App” no teu plano
 

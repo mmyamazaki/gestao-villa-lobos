@@ -12,6 +12,15 @@ const target = join(root, 'dist-server', 'server', 'index.js')
 const prismaClientDir = join(root, 'node_modules', '.prisma', 'client')
 const tscJs = join(root, 'node_modules', 'typescript', 'lib', 'tsc.js')
 
+process.on('uncaughtException', (err) => {
+  console.error('[start] uncaughtException', err)
+  process.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[start] unhandledRejection', reason)
+  process.exit(1)
+})
+
 console.error('[start] cwd=', root)
 
 function run(cmd, args, opts = {}) {

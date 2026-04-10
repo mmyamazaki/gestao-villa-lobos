@@ -60,14 +60,19 @@ if (NODE_ENV === 'production') {
 }
 
 /**
- * Porta HTTP: em produção usa só `PORT` (Hostinger/PaaS) ou 3000 — nunca `API_PORT`.
- * `API_PORT` existe só para desenvolvimento local (Vite proxy + predev).
+ * Porta HTTP: `PORT` (Railway, Render, etc.) → `API_PORT` (painel Hostinger / .env local) → 3000.
+ * Ignorar `API_PORT` em produção quebrava hosts onde só esta variável está definida.
  */
-const port = Number(
-  NODE_ENV === 'production'
-    ? process.env.PORT?.trim() || '3000'
-    : process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000',
-)
+function resolveListenPort(): number {
+  const raw =
+    process.env.PORT?.trim() ||
+    process.env.API_PORT?.trim() ||
+    '3000'
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 1 || n > 65535) return 3000
+  return n
+}
+const port = resolveListenPort()
 /** Alguns proxies exigem 127.0.0.1; a maioria aceita 0.0.0.0 */
 const listenHost =
   (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
@@ -76,7 +81,7 @@ const listenHost =
 console.log('BOOT', {
   listenPort: port,
   PORT: process.env.PORT ?? '(unset)',
-  API_PORT: NODE_ENV === 'production' ? '(não usado em produção)' : process.env.API_PORT ?? '(unset)',
+  API_PORT: process.env.API_PORT ?? '(unset)',
   NODE_ENV,
   host: listenHost,
   cwd: process.cwd(),
