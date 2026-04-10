@@ -61,9 +61,12 @@ if (NODE_ENV === 'production') {
 
 /** Padrão Node / Hostinger (Kodee): `process.env.PORT` com fallback 3000 */
 const port = Number(process.env.PORT || 3000)
+/** Alguns proxies exigem 127.0.0.1; a maioria aceita 0.0.0.0 */
+const listenHost =
+  (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
 
 /** Diagnóstico Hostinger: deve aparecer em Runtime logs se o processo arrancar. */
-console.log('BOOT', { port: process.env.PORT, cwd: process.cwd() })
+console.log('BOOT', { port: process.env.PORT, host: listenHost, cwd: process.cwd() })
 
 /**
  * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file
@@ -958,10 +961,10 @@ if (existsSync(distDir)) {
   console.warn(`[api] AVISO: dist não encontrada (${distDir}) — só API ou cwd errado.`)
 }
 
-const server = app.listen(port, '0.0.0.0', () => {
-  console.log('LISTENING', port)
+const server = app.listen(port, listenHost, () => {
+  console.log('LISTENING', port, listenHost)
   console.log(
-    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://0.0.0.0:${port}`,
+    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${listenHost}:${port}`,
   )
   if (existsSync(join(distDir, 'index.html'))) {
     console.log(`[api] servindo frontend estático de ${distDir}`)

@@ -48,4 +48,12 @@ console.log(
 )
 
 const r = spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', shell: true })
-process.exit(r.status === null ? 1 : r.status)
+if (r.status !== 0 && r.status !== null) {
+  console.warn(
+    '[postinstall] AVISO: prisma generate falhou (rede, disco ou OpenSSL). O npm start tentará gerar de novo.',
+  )
+  if (process.env.PRISMA_GENERATE_STRICT === '1') {
+    process.exit(r.status)
+  }
+}
+process.exit(0)
