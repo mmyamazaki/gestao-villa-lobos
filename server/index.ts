@@ -5,7 +5,7 @@
  */
 import 'dotenv/config'
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -976,6 +976,56 @@ if (existsSync(distDir)) {
   console.warn(`[api] AVISO: dist não encontrada (${distDir}) — só API ou cwd errado.`)
 }
 
+/** Igual a `scripts/singleton-lock.mjs` — libertar se este processo morrer antes do listen. */
+const BOOT_LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
+
+function releaseBootLockIfHeld() {
+  try {
+    const p = join(process.cwd(), BOOT_LOCK_BASENAME)
+    if (!existsSync(p)) return
+    if (readFileSync(p, 'utf8').trim() === String(process.pid)) unlinkSync(p)
+  } catch {
+    /* ignore */
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms))
+}
+
+/**
+ * Vários arranques em paralelo (Hostinger) podem disparar PANIC `timer has gone away` na
+ * primeira ligação — retentativas com backoff evitam morrer à toa e logs assustadores.
+ */
+async function connectPrismaWithRetries(): Promise<void> {
+  const max = 8
+  for (let i = 0; i < max; i++) {
+    try {
+      await prisma.$connect()
+      if (i > 0) {
+        console.log(`[api] Prisma ligado ao Postgres após ${i + 1} tentativa(s).`)
+      } else {
+        console.log('[api] Prisma ligado ao Postgres (engine pronta antes do HTTP).')
+      }
+      return
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const panic = /PANIC|timer has gone away/i.test(msg)
+      if (i < max - 1) {
+        const wait = panic ? 400 + i * 200 : 250 + i * 100
+        console.warn(
+          `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC transitório)' : ''}; a aguardar ${wait}ms…`,
+        )
+        await sleep(wait)
+        continue
+      }
+      console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
+      releaseBootLockIfHeld()
+      process.exit(1)
+    }
+  }
+}
+
 /**
  * Produção: `scripts/start-production.mjs` faz `await start()`.
  * Dev: `tsx server/index.ts` executa este ficheiro como entrada → `start()` no final.
@@ -991,13 +1041,7 @@ export async function start(): Promise<void> {
   })
 
   if (process.env.DATABASE_URL?.trim()) {
-    try {
-      await prisma.$connect()
-      console.log('[api] Prisma ligado ao Postgres (engine pronta antes do HTTP).')
-    } catch (e) {
-      console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
-      process.exit(1)
-    }
+    await connectPrismaWithRetries()
   }
 
   return new Promise((resolvePromise, reject) => {
@@ -1021,6 +1065,7 @@ export async function start(): Promise<void> {
       } else {
         console.error('[api] Erro ao abrir o servidor:', err.message)
       }
+      releaseBootLockIfHeld()
       reject(err)
       process.exit(1)
     })
