@@ -91,6 +91,95 @@ if (prismaUrl && raw && prismaUrl !== raw) {
   )
 }
 
-export const prisma = new PrismaClient(
-  prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined,
-)
+const prismaOptions = prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined
+
+function isPrismaTransientOrPanicError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e)
+  const low = msg.toLowerCase()
+  return (
+    low.includes('panic') ||
+    low.includes('timer has gone away') ||
+    low.includes('connection closed') ||
+    low.includes('server has closed the connection') ||
+    low.includes("can't reach database server") ||
+    low.includes('too many connections') ||
+    low.includes('query engine exited')
+  )
+}
+
+let currentClient = new PrismaClient(prismaOptions)
+let resetInFlight: Promise<void> | null = null
+
+async function resetClient(reason: string) {
+  if (resetInFlight) {
+    await resetInFlight
+    return
+  }
+  resetInFlight = (async () => {
+    const old = currentClient
+    try {
+      await old.$disconnect()
+    } catch {
+      /* noop */
+    }
+    currentClient = new PrismaClient(prismaOptions)
+    console.warn(`[api][prisma] cliente reiniciado após erro transitório: ${reason}`)
+  })()
+  try {
+    await resetInFlight
+  } finally {
+    resetInFlight = null
+  }
+}
+
+async function runWithRetry<T>(opName: string, fn: (client: PrismaClient) => Promise<T>): Promise<T> {
+  try {
+    return await fn(currentClient)
+  } catch (e) {
+    if (!isPrismaTransientOrPanicError(e)) throw e
+    await resetClient(opName)
+    return fn(currentClient)
+  }
+}
+
+function wrapDelegate(delegateName: string) {
+  return new Proxy(
+    {},
+    {
+      get(_target, operation) {
+        const op = String(operation)
+        return (...args: unknown[]) =>
+          runWithRetry(`${delegateName}.${op}`, async (client) => {
+            const delegate = Reflect.get(client as object, delegateName) as Record<string, unknown>
+            const method = Reflect.get(delegate, op)
+            if (typeof method !== 'function') return method
+            return Reflect.apply(method, delegate, args) as Promise<unknown>
+          })
+      },
+    },
+  )
+}
+
+/**
+ * Proxy resiliente: em PANIC/transiente, reinicia PrismaClient e tenta 1x novamente.
+ * Evita indisponibilidade prolongada em produção por quedas momentâneas de conexão/engine.
+ */
+export const prisma = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      const name = String(prop)
+      // Delegates de modelos (course, teacher, student, etc.)
+      const delegate = Reflect.get(currentClient as object, prop)
+      if (delegate && typeof delegate === 'object') {
+        return wrapDelegate(name)
+      }
+      return (...args: unknown[]) =>
+        runWithRetry(name, async (client) => {
+          const method = Reflect.get(client as object, prop)
+          if (typeof method !== 'function') return method
+          return Reflect.apply(method, client, args) as Promise<unknown>
+        })
+    },
+  },
+) as unknown as PrismaClient

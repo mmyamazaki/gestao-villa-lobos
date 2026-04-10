@@ -150,6 +150,96 @@ app.get('/api/health/db', async (_req: Request, res: Response) => {
   }
 })
 
+const REQUIRED_TABLE_COLUMNS: Record<string, string[]> = {
+  Course: ['id', 'instrument', 'instrumentLabel', 'levelLabel', 'monthlyPrice'],
+  Teacher: ['id', 'nome', 'instrumentSlugs', 'schedule'],
+  Student: ['id', 'codigo', 'nome', 'enrollment', 'status'],
+  Mensalidade: [
+    'id',
+    'studentId',
+    'courseId',
+    'manual_fine',
+    'manual_interest',
+    'adjustment_notes',
+  ],
+  LessonLog: ['id', 'teacherId', 'studentId', 'lessonDate', 'slotKey'],
+  ReplacementClass: ['id', 'studentId', 'teacherId', 'date', 'startTime'],
+  SchoolSettings: ['id', 'observacoesInternas'],
+  admins: ['id', 'email', 'password_hash', 'created_at', 'updated_at'],
+}
+
+app.get('/api/health/schema', async (_req: Request, res: Response) => {
+  try {
+    const tableRows = await prisma.$queryRaw<
+      Array<{ table_name: string }>
+    >`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+    const existingTables = new Set(tableRows.map((r) => r.table_name))
+
+    const columnRows = await prisma.$queryRaw<
+      Array<{ table_name: string; column_name: string }>
+    >`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`
+    const columnsByTable = new Map<string, Set<string>>()
+    for (const row of columnRows) {
+      const curr = columnsByTable.get(row.table_name) ?? new Set<string>()
+      curr.add(row.column_name)
+      columnsByTable.set(row.table_name, curr)
+    }
+
+    const rlsRows = await prisma.$queryRaw<
+      Array<{ tablename: string; policyname: string; roles: string[] | null }>
+    >`SELECT tablename, policyname, roles FROM pg_policies WHERE schemaname = 'public'`
+    const rlsByTable = new Map<string, Array<{ policyname: string; roles: string[] | null }>>()
+    for (const row of rlsRows) {
+      const arr = rlsByTable.get(row.tablename) ?? []
+      arr.push({ policyname: row.policyname, roles: row.roles })
+      rlsByTable.set(row.tablename, arr)
+    }
+
+    const missingTables: string[] = []
+    const missingColumns: Array<{ table: string; columns: string[] }> = []
+    const anonPolicies: Array<{ table: string; policy: string }> = []
+
+    for (const [table, requiredColumns] of Object.entries(REQUIRED_TABLE_COLUMNS)) {
+      if (!existingTables.has(table)) {
+        missingTables.push(table)
+        continue
+      }
+      const tableCols = columnsByTable.get(table) ?? new Set<string>()
+      const miss = requiredColumns.filter((c) => !tableCols.has(c))
+      if (miss.length > 0) {
+        missingColumns.push({ table, columns: miss })
+      }
+      const policies = rlsByTable.get(table) ?? []
+      for (const p of policies) {
+        const roles = p.roles ?? []
+        if (roles.some((r) => r === 'anon' || r === 'public')) {
+          anonPolicies.push({ table, policy: p.policyname })
+        }
+      }
+    }
+
+    res.json({
+      ok: missingTables.length === 0 && missingColumns.length === 0,
+      summary: {
+        missingTables: missingTables.length,
+        missingColumns: missingColumns.length,
+        anonPolicies: anonPolicies.length,
+      },
+      missingTables,
+      missingColumns,
+      anonPolicies,
+      hint:
+        'Se houver colunas faltando, aplique migrations/SQL de prisma/migrations e prisma/sql. Se houver políticas anon em produção pública, revise prisma/sql/rls_secure_production.sql.',
+    })
+  } catch (e) {
+    console.error('[api/health/schema]', e)
+    res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : 'schema_audit_failed',
+    })
+  }
+})
+
 app.post('/api/auth/admin/login', async (req: Request, res: Response) => {
   try {
     const emailRaw = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''

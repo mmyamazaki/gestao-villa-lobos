@@ -27,6 +27,7 @@
     "predb:generate": "npm run check-quick",
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
+    "db:audit": "node scripts/db-deep-audit.mjs",
     "verify:env": "node scripts/verify-env.mjs",
     "validate:backend": "node scripts/validate-backend-course.mjs"
   },

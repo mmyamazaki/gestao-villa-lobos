@@ -63,6 +63,36 @@ function uniqueInstrumentSlugs(courses: Course[]) {
   return [...new Set(courses.map((c) => c.instrument))]
 }
 
+function hydrateStudentsFromMensalidades(
+  students: Student[],
+  mensalidades: MensalidadeRegistrada[],
+): Student[] {
+  if (mensalidades.length === 0) return students
+  const byId = new Map(students.map((s) => [s.id, s] as const))
+  for (const m of mensalidades) {
+    const studentId = (m.studentId ?? '').trim()
+    if (!studentId || byId.has(studentId)) continue
+    const fallbackCode = `AUTO-${studentId.slice(0, 6).toUpperCase()}`
+    byId.set(studentId, {
+      id: studentId,
+      codigo: fallbackCode,
+      nome: (m.studentNome ?? '').trim() || fallbackCode,
+      dataNascimento: '',
+      rg: '',
+      cpf: '',
+      filiacao: '',
+      endereco: '',
+      telefone: '',
+      email: '',
+      login: '',
+      senha: '',
+      enrollment: null,
+      status: 'ativo',
+    })
+  }
+  return [...byId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
 function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
   const courses = (raw?.courses?.length ? raw!.courses : []).map((c) => ({ ...c }))
   const fallbackSlugs = uniqueInstrumentSlugs(courses)
@@ -587,10 +617,18 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           const list = await fetchMensalidadesRemoteBestEffort()
           warnIfCoreWithoutStudentsButMensalidades(core, list)
           if (!cancelled) {
-            setState((prev) => ({
-              ...prev,
-              mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
-            }))
+            setState((prev) => {
+              const mergedMensalidades = mergeMensalidadesFromServer(prev.mensalidades, list)
+              const fallbackStudents =
+                core.students.length === 0
+                  ? hydrateStudentsFromMensalidades(prev.students, mergedMensalidades)
+                  : prev.students
+              return reconcileTeacherSchedulesWithStudents({
+                ...prev,
+                students: fallbackStudents,
+                mensalidades: mergedMensalidades,
+              })
+            })
           }
         }
       } catch (e) {
@@ -604,10 +642,18 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               const list = await fetchMensalidadesRemoteBestEffort()
               warnIfCoreWithoutStudentsButMensalidades(core, list)
               if (!cancelled) {
-                setState((prev) => ({
-                  ...prev,
-                  mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
-                }))
+                setState((prev) => {
+                  const mergedMensalidades = mergeMensalidadesFromServer(prev.mensalidades, list)
+                  const fallbackStudents =
+                    core.students.length === 0
+                      ? hydrateStudentsFromMensalidades(prev.students, mergedMensalidades)
+                      : prev.students
+                  return reconcileTeacherSchedulesWithStudents({
+                    ...prev,
+                    students: fallbackStudents,
+                    mensalidades: mergedMensalidades,
+                  })
+                })
               }
             }
             console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')
