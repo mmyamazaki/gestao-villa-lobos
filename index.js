@@ -1,11 +1,8 @@
 /**
  * Ponto de entrada Node em produção (muitos painéis exigem "Entry file" = index.js).
- * Garante dist-server antes de carregar a API (ver scripts/start-production.mjs).
- *
- * Diagnóstico Hostinger/Kodee: `import` estático corre antes do corpo do módulo;
- * usamos import dinâmico para este log e handlers aparecerem primeiro nos Runtime logs.
+ * Bootstrap: scripts/start-production.mjs → carrega dist-server/server/index.js (Express).
  */
-console.log('app iniciada')
+console.log('[boot] index.js iniciado')
 
 process.on('uncaughtException', (err) => {
   console.error('uncaughtException:', err)
@@ -15,4 +12,10 @@ process.on('unhandledRejection', (err) => {
   console.error('unhandledRejection:', err)
 })
 
-await import('./scripts/start-production.mjs')
+try {
+  await import('./scripts/start-production.mjs')
+  console.log('[boot] import de produção concluído')
+} catch (err) {
+  console.error('[boot] falha ao carregar produção:', err)
+  process.exit(1)
+}

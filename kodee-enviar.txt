@@ -1,0 +1,108 @@
+=== Anexo para suporte Kodee / Hostinger ===
+Projeto: gestao-villa-lobos
+Build: npm run build | Start: npm start (prestart + node index.js)
+Node: >=20 | type: module
+
+--- INÍCIO package.json ---
+{
+  "name": "gestao-villa-lobos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "predev": "node scripts/predev.mjs",
+    "doctor": "node scripts/predev.mjs",
+    "check-quick": "node scripts/check-quick.mjs",
+    "dev": "npm run predev && concurrently -k -n api,vite -c magenta,cyan \"tsx watch server/index.ts\" \"node scripts/wait-api.mjs && vite\"",
+    "dev:client": "vite",
+    "preserver": "npm run predev",
+    "server": "tsx server/index.ts",
+    "build": "npx vite build && npx tsc -p tsconfig.server.json",
+    "postinstall": "node scripts/postinstall.mjs",
+    "prestart": "node scripts/ensure-dist-server.mjs",
+    "start": "node index.js",
+    "prelint": "npm run check-quick",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "preview": "vite preview",
+    "predb:push": "npm run check-quick",
+    "db:push": "prisma db push",
+    "predb:generate": "npm run check-quick",
+    "db:generate": "prisma generate",
+    "db:seed": "prisma db seed",
+    "db:audit": "node scripts/db-deep-audit.mjs",
+    "verify:env": "node scripts/verify-env.mjs",
+    "validate:backend": "node scripts/validate-backend-course.mjs"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
+  },
+  "dependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.12.0",
+    "@prisma/client": "^6.19.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "jspdf": "^4.2.1",
+    "prisma": "^6.19.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.2",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.27.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "tsx": "^4.21.0",
+    "typescript-eslint": "^8.57.0",
+    "wait-on": "^8.0.5"
+  }
+}
+--- FIM package.json ---
+
+--- INÍCIO index.js (entrada da app) ---
+/**
+ * Ponto de entrada Node em produção (muitos painéis exigem "Entry file" = index.js).
+ * Bootstrap: scripts/start-production.mjs → carrega dist-server/server/index.js (Express).
+ */
+console.log('[boot] index.js iniciado')
+
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException:', err)
+})
+
+process.on('unhandledRejection', (err) => {
+  console.error('unhandledRejection:', err)
+})
+
+try {
+  await import('./scripts/start-production.mjs')
+  console.log('[boot] import de produção concluído')
+} catch (err) {
+  console.error('[boot] falha ao carregar produção:', err)
+  process.exit(1)
+}
+--- FIM index.js ---
+
+--- Opcional: server.js (só faz import do index.js) ---
+/** Compatibilidade com painéis que fixam Entry file = server.js */
+import './index.js'
