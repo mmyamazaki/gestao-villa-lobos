@@ -1,3 +1,9 @@
+import { acquireSingletonLock } from './scripts/singleton-lock.mjs'
+
+if (!acquireSingletonLock()) {
+  process.exit(0)
+}
+
 console.log('[boot] index.js carregado')
 
 ;(async () => {

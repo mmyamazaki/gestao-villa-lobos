@@ -33,6 +33,10 @@ O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` fa
 
 Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
+### Vários `[boot] index.js carregado` seguidos (mesma porta)
+
+Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. No hPanel, confirme **uma única** aplicação Node a apontar para este projeto e **não** duplicar o comando de arranque (entry + start ao mesmo tempo com o mesmo efeito).
+
 ### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
 
 O pooler **transação** do Supabase (**6543**) é problemático para o Prisma. O código **troca para 5432** no mesmo host `*.pooler.supabase.com` (modo sessão). Rotas `/api/...` e variáveis `VITE_*` no browser **não são alteradas**.
