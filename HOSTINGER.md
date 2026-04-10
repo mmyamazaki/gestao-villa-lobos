@@ -35,7 +35,7 @@ Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o p
 
 ### Vários `[boot] index.js carregado` seguidos (mesma porta)
 
-Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. O lock ignora **PIDs zombies** em Linux e só trata como “duplicado” se **127.0.0.1:PORT** aceitar ligação TCP (há servidor a escutar); caso contrário o lock é considerado obsoleto após uma breve espera. No hPanel, confirme **uma única** aplicação Node a apontar para este projeto e **não** duplicar o comando de arranque (entry + start ao mesmo tempo com o mesmo efeito).
+Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. O lock ignora **PIDs zombies** em Linux. **Não** se testa `127.0.0.1` no painel Hostinger (essa ligação pode falhar mesmo com o Node a correr e fazia arrancar **duas** instâncias → Prisma `PANIC: timer has gone away`). No hPanel, confirme **uma única** aplicação Node a apontar para este projeto e **não** duplicar o comando de arranque (entry + start ao mesmo tempo com o mesmo efeito).
 
 ### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
 

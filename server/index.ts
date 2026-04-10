@@ -990,6 +990,16 @@ export async function start(): Promise<void> {
     cwd: process.cwd(),
   })
 
+  if (process.env.DATABASE_URL?.trim()) {
+    try {
+      await prisma.$connect()
+      console.log('[api] Prisma ligado ao Postgres (engine pronta antes do HTTP).')
+    } catch (e) {
+      console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
+      process.exit(1)
+    }
+  }
+
   return new Promise((resolvePromise, reject) => {
     const server = app.listen(port, listenHost, () => {
       console.log('[server] ouvindo na porta', port)
