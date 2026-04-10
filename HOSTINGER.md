@@ -17,7 +17,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
-   - **`HOST` com o domínio do site (ex. `appvillalobosro.com.br`) quebra o proxy** → 503 no browser. O código **ignora** `HOST` quando parece domínio e escuta em **`0.0.0.0`**. Se o suporte pedir bind explícito, use **`LISTEN_HOST=127.0.0.1`** (não use o domínio em `HOST`).
+   - **`HOST` com o domínio do site (ex. `appvillalobosro.com.br`) quebra o proxy** → 503. O código **ignora** esse valor. Em produção, **sem `PORT` definido** (só `API_PORT`, típico no painel), a app escuta em **`127.0.0.1`** para alinhar com o proxy Apache/LiteSpeed. **`BIND_ALL_INTERFACES=1`** força **`0.0.0.0`**. PaaS com `PORT` injetado continuam com **`0.0.0.0`**.
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
@@ -55,7 +55,7 @@ Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão*
 - **`index.js`** na raiz (entrada principal); **`server.js`** reexporta para painéis antigos que fixam esse nome.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
-- Escuta com `app.listen(port, listenHost)` onde `port = PORT` (se existir) **ou** `API_PORT` **ou** `3000` — alinha com painéis que só expõem `API_PORT`.
+- Escuta com `app.listen(port, listenHost)` onde `port = PORT` **ou** `API_PORT` **ou** `3000`; em produção **sem** `PORT`, o host de escuta padrão é **`127.0.0.1`** (proxy local). `BIND_ALL_INTERFACES=1` volta a **`0.0.0.0`**.
 
 ## Se não aparecer “Node.js App” no teu plano
 

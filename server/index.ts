@@ -78,7 +78,8 @@ const port = resolveListenPort()
  * O painel (Hostinger, etc.) por vezes define `HOST` com o **domínio público** do site.
  * `app.listen(port, 'app.exemplo.com')` resolve para IP(s) externos; o reverse proxy local
  * liga a `127.0.0.1:PORT` → **503**. Só aceitamos `HOST` como bind se for endereço seguro;
- * caso contrário usamos `0.0.0.0`. Para forçar, use `LISTEN_HOST`.
+ * caso contrário escolhemos um bind compatível com o proxy. Para forçar, use `LISTEN_HOST`
+ * ou `BIND_ALL_INTERFACES=1`.
  */
 function isSafeHttpBindHost(value: string): boolean {
   const v = value.trim()
@@ -103,14 +104,25 @@ function resolveListenHost(): string {
   const fromList = (process.env.LISTEN_HOST || '').trim()
   if (fromList) return fromList || '0.0.0.0'
 
-  const fromHost = (process.env.HOST || '').trim()
-  if (!fromHost) return '0.0.0.0'
-  if (isSafeHttpBindHost(fromHost)) return fromHost
+  if (process.env.BIND_ALL_INTERFACES === '1') return '0.0.0.0'
 
-  if (NODE_ENV === 'production') {
+  const fromHost = (process.env.HOST || '').trim()
+  if (fromHost && isSafeHttpBindHost(fromHost)) return fromHost
+
+  if (fromHost && !isSafeHttpBindHost(fromHost) && NODE_ENV === 'production') {
     console.warn(
-      `[api] HOST="${fromHost}" não é um endereço de escuta HTTP seguro (ex.: domínio do site). A usar 0.0.0.0. Defina LISTEN_HOST=127.0.0.1 no painel se o suporte indicar.`,
+      `[api] HOST="${fromHost}" ignorado para bind HTTP (domínio público). A usar endereço local padrão.`,
     )
+  }
+
+  /**
+   * Hostinger (e similares): o Apache/LiteSpeed faz proxy para `127.0.0.1:PORT`. Com só
+   * `API_PORT` e sem `PORT`, escutar em `0.0.0.0` por vezes não recebe esse tráfego → 503.
+   * PaaS que injeta `PORT` (Railway, Render, …) costuma precisar de `0.0.0.0`.
+   */
+  if (NODE_ENV === 'production') {
+    const portFromEnv = Boolean(process.env.PORT?.trim())
+    return portFromEnv ? '0.0.0.0' : '127.0.0.1'
   }
   return '0.0.0.0'
 }
@@ -1102,6 +1114,11 @@ export async function start(): Promise<void> {
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
+      }
+      if (NODE_ENV === 'production') {
+        console.log(
+          `[api] 503 no browser? Confirme no hPanel porta da app = ${port} e domínio = esta Node app. SSH: curl -sf http://127.0.0.1:${port}/health → ok`,
+        )
       }
       resolvePromise()
     })
