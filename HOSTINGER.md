@@ -17,11 +17,11 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
-   - **`HOST` com o domínio do site** → ignorado; bind **`0.0.0.0`** (aceita **`127.0.0.1`** no mesmo host). **Não** usar `listen(port)` sem host neste alojamento: pode dar **`LISTENING` mas `ECONNREFUSED` em loopback** e 503. **`LISTEN_HOST=127.0.0.1`** só se o suporte exigir. **`BIND_ALL_INTERFACES=1`** = **`0.0.0.0`**. Auto-teste: **`127.0.0.1`** deve ser HTTP 200; **`::1`** pode falhar se o socket for só IPv4 — normal se o proxy usar IPv4.
+   - **`HOST` com domínio público** → ignorado; bind **`0.0.0.0`** no código. **`LISTEN_HOST` / `BIND_ALL_INTERFACES`**: ver `DEPLOY.md`.
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
-   - **`PORT`** ou **`API_PORT`** — a app usa **`PORT` primeiro**; se não existir, usa **`API_PORT`** (comum na Hostinger com valor **3000**), senão **3000**. O proxy tem de apontar para a mesma porta que aparece no log `LISTENING`.
+   - **`PORT`** ou **`API_PORT`** — lógica interna da app (muitas vezes **3000**). **LiteSpeed** (Hostinger) pode expor a app por **socket Unix** (`extapp-sock/..._.sock`): o log `socket.address()` mostra esse caminho — **não** há serviço em `curl 127.0.0.1:3000` nesse modo; o auto-teste usa o socket Unix. O 503 no browser costuma ser **domínio / site errado no hPanel**, não “porta TCP”.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
 
@@ -31,7 +31,7 @@ O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` fa
 
 ### Erro 503 no browser
 
-Verifica **`socket.address()`** e **`auto-teste 127.0.0.1`** → HTTP 200. Se **`LISTENING`** aparecer mas **`ECONNREFUSED`** em loopback, o bind estava errado (corrige com host **`0.0.0.0` explícito** no código). Se loopback OK e o browser 503 → **painel/DNS/outro site no domínio**.
+Se o log mostrar **`socket.address()`** como **`/usr/local/lsws/extapp-sock/..._.sock`**, é **LiteSpeed + socket Unix**: ignora **`ECONNREFUSED` em `127.0.0.1:3000`** (normal). O log deve mostrar **`auto-teste unix:... → HTTP 200`**. Com app OK e 503 → confirma no hPanel que o **domínio** está na **mesma Node Web App** e que não há **outro site estático** a “roubar” o domínio; fala com o suporte Hostinger se o `.htaccess` em `public_html` não encaminhar para a app Node.
 
 ### Vários `[boot] index.js carregado` seguidos (mesma porta)
 
