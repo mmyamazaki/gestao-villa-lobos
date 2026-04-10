@@ -1,21 +1,19 @@
-/**
- * Ponto de entrada Node em produção (muitos painéis exigem "Entry file" = index.js).
- * Bootstrap: scripts/start-production.mjs → carrega dist-server/server/index.js (Express).
- */
-console.log('[boot] index.js iniciado')
+console.log('[boot] index.js carregado')
+
+;(async () => {
+  try {
+    await import('./scripts/start-production.mjs')
+    console.log('[boot] start-production.mjs carregado')
+  } catch (err) {
+    console.error('[boot] erro fatal ao iniciar:', err)
+    process.exit(1)
+  }
+})()
 
 process.on('uncaughtException', (err) => {
-  console.error('uncaughtException:', err)
+  console.error('[boot] uncaughtException:', err)
 })
 
 process.on('unhandledRejection', (err) => {
-  console.error('unhandledRejection:', err)
+  console.error('[boot] unhandledRejection:', err)
 })
-
-try {
-  await import('./scripts/start-production.mjs')
-  console.log('[boot] import de produção concluído')
-} catch (err) {
-  console.error('[boot] falha ao carregar produção:', err)
-  process.exit(1)
-}

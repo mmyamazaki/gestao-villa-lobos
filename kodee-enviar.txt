@@ -20,7 +20,7 @@ Node: >=20 | type: module
     "dev:client": "vite",
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
-    "build": "npx vite build && npx tsc -p tsconfig.server.json",
+    "build": "vite build && tsc -p tsconfig.server.json",
     "postinstall": "node scripts/postinstall.mjs",
     "prestart": "node scripts/ensure-dist-server.mjs",
     "start": "node index.js",
@@ -80,28 +80,29 @@ Node: >=20 | type: module
 --- FIM package.json ---
 
 --- INÍCIO index.js (entrada da app) ---
-/**
- * Ponto de entrada Node em produção (muitos painéis exigem "Entry file" = index.js).
- * Bootstrap: scripts/start-production.mjs → carrega dist-server/server/index.js (Express).
- */
-console.log('[boot] index.js iniciado')
+console.log('[boot] index.js carregado')
+
+;(async () => {
+  try {
+    await import('./scripts/start-production.mjs')
+    console.log('[boot] start-production.mjs carregado')
+  } catch (err) {
+    console.error('[boot] erro fatal ao iniciar:', err)
+    process.exit(1)
+  }
+})()
 
 process.on('uncaughtException', (err) => {
-  console.error('uncaughtException:', err)
+  console.error('[boot] uncaughtException:', err)
 })
 
 process.on('unhandledRejection', (err) => {
-  console.error('unhandledRejection:', err)
+  console.error('[boot] unhandledRejection:', err)
 })
-
-try {
-  await import('./scripts/start-production.mjs')
-  console.log('[boot] import de produção concluído')
-} catch (err) {
-  console.error('[boot] falha ao carregar produção:', err)
-  process.exit(1)
-}
 --- FIM index.js ---
+
+Notas: server/index.ts exporta start() (API completa + SPA). Não há GET / "API online"
+para não quebrar o frontend React. Rota /health = texto "ok".
 
 --- Opcional: server.js (só faz import do index.js) ---
 /** Compatibilidade com painéis que fixam Entry file = server.js */

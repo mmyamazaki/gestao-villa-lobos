@@ -1,25 +1,14 @@
 /**
- * Entrada de produção: garante Prisma client + dist-server antes de carregar a API.
- * Hosts com NPM_CONFIG_IGNORE_SCRIPTS ou postinstall falhado ficam sem .prisma/client → crash → 503.
+ * Produção: garante Prisma client + dist-server, depois `await start()` no bundle Express.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 const root = process.cwd()
 const target = join(root, 'dist-server', 'server', 'index.js')
 const prismaClientDir = join(root, 'node_modules', '.prisma', 'client')
 const tscJs = join(root, 'node_modules', 'typescript', 'lib', 'tsc.js')
-
-process.on('uncaughtException', (err) => {
-  console.error('[start] uncaughtException', err)
-  process.exit(1)
-})
-process.on('unhandledRejection', (reason) => {
-  console.error('[start] unhandledRejection', reason)
-  process.exit(1)
-})
 
 console.error('[start] cwd=', root)
 
@@ -68,9 +57,15 @@ if (!existsSync(target)) {
   }
 }
 
-try {
-  await import(pathToFileURL(target).href)
-} catch (err) {
-  console.error('[start] Falha ao carregar a API:', err)
+console.log('[prod] iniciando produção')
+
+const mod = await import('../dist-server/server/index.js')
+const start = mod.start || mod.default?.start
+
+if (typeof start !== 'function') {
+  console.error('[prod] export start() não encontrado em dist-server/server/index.js')
   process.exit(1)
 }
+
+await start()
+console.log('[prod] start() executado com sucesso')

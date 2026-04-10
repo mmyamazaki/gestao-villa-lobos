@@ -41,5 +41,5 @@ npm start
 
 ## Ficheiro de entrada
 
-- **`npm start`** → `scripts/start-production.mjs`
+- **`npm start`** → `node index.js` → `scripts/start-production.mjs` → `await start()` em `dist-server/server/index.js`
 - Painéis que exijam **Entry file** → `index.js` (delega para o mesmo fluxo)

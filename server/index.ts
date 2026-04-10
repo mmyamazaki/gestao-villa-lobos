@@ -6,7 +6,7 @@
 import 'dotenv/config'
 
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import bcrypt from 'bcryptjs'
@@ -77,16 +77,6 @@ const port = resolveListenPort()
 const listenHost =
   (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
 
-/** Diagnóstico Hostinger: deve aparecer em Runtime logs se o processo arrancar. */
-console.log('BOOT', {
-  listenPort: port,
-  PORT: process.env.PORT ?? '(unset)',
-  API_PORT: process.env.API_PORT ?? '(unset)',
-  NODE_ENV,
-  host: listenHost,
-  cwd: process.cwd(),
-})
-
 /**
  * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file
  * ou script de arranque), e `join(cwd,'dist')` fica vazio/incompleto — o fallback SPA acaba
@@ -156,7 +146,7 @@ app.use(express.json({ limit: '20mb' }))
 
 /** Diagnóstico proxy Hostinger/Kodee: https://domínio/health (texto plano, sem /api). */
 app.get('/health', (_req: Request, res: Response) => {
-  console.log('health check acessado')
+  console.log('[health] rota /health acessada')
   res.status(200).send('ok')
 })
 
@@ -986,23 +976,61 @@ if (existsSync(distDir)) {
   console.warn(`[api] AVISO: dist não encontrada (${distDir}) — só API ou cwd errado.`)
 }
 
-const server = app.listen(port, listenHost, () => {
-  console.log('LISTENING', port, listenHost)
-  console.log(
-    `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${listenHost}:${port}`,
-  )
-  if (existsSync(join(distDir, 'index.html'))) {
-    console.log(`[api] servindo frontend estático de ${distDir}`)
-  }
-})
+/**
+ * Produção: `scripts/start-production.mjs` faz `await start()`.
+ * Dev: `tsx server/index.ts` executa este ficheiro como entrada → `start()` no final.
+ */
+export async function start(): Promise<void> {
+  console.log('BOOT', {
+    listenPort: port,
+    PORT: process.env.PORT ?? '(unset)',
+    API_PORT: process.env.API_PORT ?? '(unset)',
+    NODE_ENV,
+    host: listenHost,
+    cwd: process.cwd(),
+  })
 
-server.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(
-      `[api] Porta ${port} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
-    )
-  } else {
-    console.error('[api] Erro ao abrir o servidor:', err.message)
+  return new Promise((resolvePromise, reject) => {
+    const server = app.listen(port, listenHost, () => {
+      console.log('[server] ouvindo na porta', port)
+      console.log('LISTENING', port, listenHost)
+      console.log(
+        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${listenHost}:${port}`,
+      )
+      if (existsSync(join(distDir, 'index.html'))) {
+        console.log(`[api] servindo frontend estático de ${distDir}`)
+      }
+      resolvePromise()
+    })
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(
+          `[api] Porta ${port} já está em uso. Encerre o outro processo ou ajuste PORT no ambiente.`,
+        )
+      } else {
+        console.error('[api] Erro ao abrir o servidor:', err.message)
+      }
+      reject(err)
+      process.exit(1)
+    })
+  })
+}
+
+function isMainModule(): boolean {
+  const entry = process.argv[1]
+  if (!entry) return false
+  try {
+    const here = fileURLToPath(import.meta.url)
+    return resolve(entry) === resolve(here)
+  } catch {
+    return false
   }
-  process.exit(1)
-})
+}
+
+if (isMainModule()) {
+  void start().catch((err) => {
+    console.error('[api] falha ao iniciar:', err)
+    process.exit(1)
+  })
+}

@@ -14,7 +14,7 @@
     "dev:client": "vite",
     "preserver": "npm run predev",
     "server": "tsx server/index.ts",
-    "build": "npx vite build && npx tsc -p tsconfig.server.json",
+    "build": "vite build && tsc -p tsconfig.server.json",
     "postinstall": "node scripts/postinstall.mjs",
     "prestart": "node scripts/ensure-dist-server.mjs",
     "start": "node index.js",
