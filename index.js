@@ -1,5 +1,5 @@
 /**
  * Ponto de entrada Node em produção (muitos painéis exigem "Entry file" = index.js).
- * O servidor Express está em JS compilado: dist-server/server/index.js (npm run build).
+ * Garante dist-server antes de carregar a API (ver scripts/start-production.mjs).
  */
-import './dist-server/server/index.js'
+import './scripts/start-production.mjs'

@@ -41,7 +41,6 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
       if (!params.has('pgbouncer')) params.set('pgbouncer', 'true')
       if (!params.has('connection_limit')) params.set('connection_limit', '1')
     } else if (directDb && port === '6543') {
-      // Painel Supabase: "Pooler settings" em host db.* com :6543 + ?pgbouncer=true — incompatível com Prisma.
       u.port = '5432'
       port = '5432'
       params.delete('pgbouncer')
@@ -83,101 +82,13 @@ if (prismaUrl && raw && prismaUrl !== raw) {
       ? '[api] DATABASE_URL: Supabase db.* 6543→5432 para Prisma.'
       : supabasePoolerNormalized
         ? '[api] DATABASE_URL: Supabase pooler 6543 com parâmetros PgBouncer para Prisma.'
-      : port6543
-        ? '[api] DATABASE_URL: ajustada (pooler 6543 / parâmetros).'
-        : '[api] DATABASE_URL: ajustada (ssl, timeout ou connection_limit).',
+        : port6543
+          ? '[api] DATABASE_URL: ajustada (pooler 6543 / parâmetros).'
+          : '[api] DATABASE_URL: ajustada (ssl, timeout ou connection_limit).',
   )
 }
 
-const prismaOptions = prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined
-
-function isPrismaTransientOrPanicError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e)
-  const low = msg.toLowerCase()
-  return (
-    low.includes('panic') ||
-    low.includes('timer has gone away') ||
-    low.includes('connection closed') ||
-    low.includes('server has closed the connection') ||
-    low.includes("can't reach database server") ||
-    low.includes('too many connections') ||
-    low.includes('query engine exited')
-  )
-}
-
-let currentClient = new PrismaClient(prismaOptions)
-let resetInFlight: Promise<void> | null = null
-
-async function resetClient(reason: string) {
-  if (resetInFlight) {
-    await resetInFlight
-    return
-  }
-  resetInFlight = (async () => {
-    const old = currentClient
-    try {
-      await old.$disconnect()
-    } catch {
-      /* noop */
-    }
-    currentClient = new PrismaClient(prismaOptions)
-    console.warn(`[api][prisma] cliente reiniciado após erro transitório: ${reason}`)
-  })()
-  try {
-    await resetInFlight
-  } finally {
-    resetInFlight = null
-  }
-}
-
-async function runWithRetry<T>(opName: string, fn: (client: PrismaClient) => Promise<T>): Promise<T> {
-  try {
-    return await fn(currentClient)
-  } catch (e) {
-    if (!isPrismaTransientOrPanicError(e)) throw e
-    await resetClient(opName)
-    return fn(currentClient)
-  }
-}
-
-function wrapDelegate(delegateName: string) {
-  return new Proxy(
-    {},
-    {
-      get(_target, operation) {
-        const op = String(operation)
-        return (...args: unknown[]) =>
-          runWithRetry(`${delegateName}.${op}`, async (client) => {
-            const delegate = Reflect.get(client as object, delegateName) as Record<string, unknown>
-            const method = Reflect.get(delegate, op)
-            if (typeof method !== 'function') return method
-            return Reflect.apply(method, delegate, args) as Promise<unknown>
-          })
-      },
-    },
-  )
-}
-
-/**
- * Proxy resiliente: em PANIC/transiente, reinicia PrismaClient e tenta 1x novamente.
- * Evita indisponibilidade prolongada em produção por quedas momentâneas de conexão/engine.
- */
-export const prisma = new Proxy(
-  {},
-  {
-    get(_target, prop) {
-      const name = String(prop)
-      // Delegates de modelos (course, teacher, student, etc.)
-      const delegate = Reflect.get(currentClient as object, prop)
-      if (delegate && typeof delegate === 'object') {
-        return wrapDelegate(name)
-      }
-      return (...args: unknown[]) =>
-        runWithRetry(name, async (client) => {
-          const method = Reflect.get(client as object, prop)
-          if (typeof method !== 'function') return method
-          return Reflect.apply(method, client, args) as Promise<unknown>
-        })
-    },
-  },
-) as unknown as PrismaClient
+/** Cliente Prisma direto — evita proxy que pode falhar em ambientes de hosting restritos. */
+export const prisma = new PrismaClient(
+  prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined,
+)

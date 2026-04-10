@@ -17,7 +17,7 @@
     "build": "npx vite build && npx tsc -p tsconfig.server.json",
     "postinstall": "node scripts/postinstall.mjs",
     "prestart": "node scripts/ensure-dist-server.mjs",
-    "start": "node index.js",
+    "start": "node scripts/start-production.mjs",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
