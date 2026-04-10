@@ -52,7 +52,7 @@ Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão*
 - **`index.js`** na raiz (entrada principal); **`server.js`** reexporta para painéis antigos que fixam esse nome.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
-- Escuta com `app.listen(port, '0.0.0.0')` onde `port = Number(process.env.PORT || 3000)`.
+- Escuta com `app.listen(port, listenHost)` onde em **produção** `port = PORT do painel ou 3000` (**`API_PORT` não conta**); em desenvolvimento entra `API_PORT` se `PORT` estiver vazio.
 
 ## Se não aparecer “Node.js App” no teu plano
 

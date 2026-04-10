@@ -59,16 +59,28 @@ if (NODE_ENV === 'production') {
   app.set('trust proxy', 1)
 }
 
-/** Produção: `PORT` (PaaS). Dev local: `API_PORT` no .env quando `PORT` não existe. */
+/**
+ * Porta HTTP: em produção usa só `PORT` (Hostinger/PaaS) ou 3000 — nunca `API_PORT`.
+ * `API_PORT` existe só para desenvolvimento local (Vite proxy + predev).
+ */
 const port = Number(
-  process.env.PORT?.trim() || process.env.API_PORT?.trim() || 3000,
+  NODE_ENV === 'production'
+    ? process.env.PORT?.trim() || '3000'
+    : process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000',
 )
 /** Alguns proxies exigem 127.0.0.1; a maioria aceita 0.0.0.0 */
 const listenHost =
   (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
 
 /** Diagnóstico Hostinger: deve aparecer em Runtime logs se o processo arrancar. */
-console.log('BOOT', { port: process.env.PORT, host: listenHost, cwd: process.cwd() })
+console.log('BOOT', {
+  listenPort: port,
+  PORT: process.env.PORT ?? '(unset)',
+  API_PORT: NODE_ENV === 'production' ? '(não usado em produção)' : process.env.API_PORT ?? '(unset)',
+  NODE_ENV,
+  host: listenHost,
+  cwd: process.cwd(),
+})
 
 /**
  * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file

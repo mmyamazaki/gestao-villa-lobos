@@ -12,7 +12,8 @@ App full-stack: **Express + Prisma** serve a API (`/api/*`) e o frontend estáti
 | Variável | Obrigatório | Notas |
 |----------|-------------|--------|
 | `DATABASE_URL` | Sim | Connection string do Postgres (Supabase). Preferir `db.<ref>.supabase.co:5432`. |
-| `PORT` | Sim (PaaS) | Hostinger e similares injetam automaticamente. |
+| `PORT` | Sim (PaaS) | Hostinger costuma injetar (muitas vezes **3000**). Se faltar e `NODE_ENV=production`, a app usa **3000**. |
+| `API_PORT` | Só em dev | Usado no `.env` local com Vite (ex. **3333**). **Ignorado em produção** — não definas na Hostinger. |
 | `NODE_ENV` | Recomendado | `production` |
 | `ADMIN_SESSION_SECRET` | Sim em produção | Mín. 8 caracteres; ver `.env.example`. |
 | `ALLOWED_ORIGINS` | Opcional | Origens CORS separadas por vírgula; vazio = permite qualquer origem. |
