@@ -17,7 +17,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
-   - `HOST` no painel é **opcional** — o servidor fixa sempre `0.0.0.0` no código (recomendação do suporte: evitar 503 por bind em `127.0.0.1`).
+   - **`HOST` com o domínio do site (ex. `appvillalobosro.com.br`) quebra o proxy** → 503 no browser. O código **ignora** `HOST` quando parece domínio e escuta em **`0.0.0.0`**. Se o suporte pedir bind explícito, use **`LISTEN_HOST=127.0.0.1`** (não use o domínio em `HOST`).
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)

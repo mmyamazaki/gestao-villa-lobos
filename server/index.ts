@@ -73,9 +73,49 @@ function resolveListenPort(): number {
   return n
 }
 const port = resolveListenPort()
-/** Alguns proxies exigem 127.0.0.1; a maioria aceita 0.0.0.0 */
-const listenHost =
-  (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
+
+/**
+ * O painel (Hostinger, etc.) por vezes define `HOST` com o **domínio público** do site.
+ * `app.listen(port, 'app.exemplo.com')` resolve para IP(s) externos; o reverse proxy local
+ * liga a `127.0.0.1:PORT` → **503**. Só aceitamos `HOST` como bind se for endereço seguro;
+ * caso contrário usamos `0.0.0.0`. Para forçar, use `LISTEN_HOST`.
+ */
+function isSafeHttpBindHost(value: string): boolean {
+  const v = value.trim()
+  if (!v) return false
+  const lower = v.toLowerCase()
+  if (
+    lower === 'localhost' ||
+    lower === '0.0.0.0' ||
+    lower === '::' ||
+    lower === '::1' ||
+    lower === '[::]' ||
+    lower === '[::1]'
+  ) {
+    return true
+  }
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(lower)) return true
+  if (lower.includes('.')) return false
+  return true
+}
+
+function resolveListenHost(): string {
+  const fromList = (process.env.LISTEN_HOST || '').trim()
+  if (fromList) return fromList || '0.0.0.0'
+
+  const fromHost = (process.env.HOST || '').trim()
+  if (!fromHost) return '0.0.0.0'
+  if (isSafeHttpBindHost(fromHost)) return fromHost
+
+  if (NODE_ENV === 'production') {
+    console.warn(
+      `[api] HOST="${fromHost}" não é um endereço de escuta HTTP seguro (ex.: domínio do site). A usar 0.0.0.0. Defina LISTEN_HOST=127.0.0.1 no painel se o suporte indicar.`,
+    )
+  }
+  return '0.0.0.0'
+}
+
+const listenHost = resolveListenHost()
 
 /**
  * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file
