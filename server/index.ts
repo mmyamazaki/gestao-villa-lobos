@@ -102,10 +102,13 @@ function isSafeHttpBindHost(value: string): boolean {
 }
 
 /**
- * `null` = não passar host ao `listen` — o Node escolhe `::` ou `0.0.0.0` (aceita loopback
- * IPv4/IPv6 conforme o SO). Fix comum a 503 quando o proxy usa `::1` e a app só escutava em `127.0.0.1`.
+ * Em Linux partilhado, `app.listen(port)` **sem** host pode associar o socket de forma que
+ * `127.0.0.1` / `::1` respondam **ECONNREFUSED** mesmo com o callback `listening` — o proxy
+ * local da Hostinger deixa de alcançar a app → 503. **Sempre** passar host explícito.
+ *
+ * `0.0.0.0` aceita ligações a 127.0.0.1:porta (IPv4 loopback). Para só IPv4 local: LISTEN_HOST=127.0.0.1
  */
-function resolveListenHost(): string | null {
+function resolveListenHost(): string {
   const fromList = (process.env.LISTEN_HOST || '').trim()
   if (fromList) return fromList
 
@@ -113,41 +116,28 @@ function resolveListenHost(): string | null {
 
   const fromHost = (process.env.HOST || '').trim()
   const hostLower = fromHost.toLowerCase()
-  const prodSemPortInjetado =
-    NODE_ENV === 'production' && !process.env.PORT?.trim()
 
-  /**
-   * Painel com HOST=0.0.0.0 e só API_PORT: não forçar 127.0.0.1 (quebra se o proxy usar IPv6).
-   */
   if (
-    prodSemPortInjetado &&
     fromHost &&
     (hostLower === '0.0.0.0' || hostLower === '::' || hostLower === '[::]')
   ) {
-    console.warn(
-      '[api] HOST=0.0.0.0/:: com só API_PORT: a omitir host no listen (defeito do Node). LISTEN_HOST=127.0.0.1 se o suporte exigir só IPv4.',
-    )
-    return null
+    return '0.0.0.0'
   }
 
   if (fromHost && isSafeHttpBindHost(fromHost)) return fromHost
 
   if (fromHost && !isSafeHttpBindHost(fromHost) && NODE_ENV === 'production') {
     console.warn(
-      `[api] HOST="${fromHost}" ignorado para bind HTTP (domínio público). A usar defeito do Node.`,
+      `[api] HOST="${fromHost}" ignorado para bind HTTP (domínio público). A usar 0.0.0.0.`,
     )
   }
 
-  if (NODE_ENV === 'production') {
-    const portFromEnv = Boolean(process.env.PORT?.trim())
-    return portFromEnv ? '0.0.0.0' : null
-  }
   return '0.0.0.0'
 }
 
 const listenHost = resolveListenHost()
 
-/** Confirma nos logs se o processo responde em 127.0.0.1 e ::1 (diagnóstico 503 / proxy). */
+/** Confirma nos logs se o processo responde em loopback (após o socket estar aceitável). */
 function probeLoopbackHealth(listenPort: number): void {
   if (NODE_ENV !== 'production') return
 
@@ -158,7 +148,7 @@ function probeLoopbackHealth(listenPort: number): void {
         port: listenPort,
         path: '/health',
         method: 'GET',
-        timeout: 4000,
+        timeout: 5000,
         family,
       },
       (res) => {
@@ -1165,7 +1155,7 @@ export async function start(): Promise<void> {
     PORT: process.env.PORT ?? '(unset)',
     API_PORT: process.env.API_PORT ?? '(unset)',
     NODE_ENV,
-    host: listenHost ?? '(omitido — defeito Node)',
+    host: listenHost,
     cwd: process.cwd(),
   })
 
@@ -1174,26 +1164,25 @@ export async function start(): Promise<void> {
   }
 
   return new Promise((resolvePromise, reject) => {
-    const onListen = () => {
+    const server = app.listen(port, listenHost, () => {
+      const addr = server.address()
       console.log('[server] ouvindo na porta', port)
-      console.log('LISTENING', port, listenHost ?? '(host omitido)')
+      console.log('LISTENING', port, listenHost)
+      console.log('[api] socket.address() =', addr)
       console.log(
-        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → http://${listenHost ?? 'defeito-node'}:${port}`,
+        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → http://${listenHost}:${port}`,
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
       }
       if (NODE_ENV === 'production') {
         console.log(
-          `[api] 503 no browser? hPanel: porta app = ${port}, domínio = esta Node app (não site estático). A seguir: auto-teste loopback.`,
+          `[api] 503 no browser? hPanel: porta app = ${port}, domínio = esta Node app. Auto-teste loopback no próximo tick.`,
         )
-        probeLoopbackHealth(port)
+        setImmediate(() => probeLoopbackHealth(port))
       }
       resolvePromise()
-    }
-
-    const server =
-      listenHost != null ? app.listen(port, listenHost, onListen) : app.listen(port, onListen)
+    })
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {

@@ -18,7 +18,7 @@ App full-stack: **Express + Prisma** serve a API (`/api/*`) e o frontend estáti
 | `ADMIN_SESSION_SECRET` | Sim em produção | Mín. 8 caracteres; ver `.env.example`. |
 | `ALLOWED_ORIGINS` | Opcional | Origens CORS separadas por vírgula; vazio = permite qualquer origem. |
 | `LISTEN_HOST` / `HOST` | Opcional | `LISTEN_HOST` força o bind. `HOST` só se for IP/`localhost` (nunca o domínio público). |
-| `BIND_ALL_INTERFACES` | Opcional | `1` → escuta `0.0.0.0` em produção. Sem `PORT`, produção pode **omitir host** no `listen` (defeito Node). |
+| `BIND_ALL_INTERFACES` | Opcional | `1` → escuta `0.0.0.0`. Por defeito a API já usa **`0.0.0.0`** explícito (evita `ECONNREFUSED` em loopback em alguns hosts). |
 
 **Build do frontend:** as variáveis `VITE_*` são lidas no **`npm run build`**; definas no ambiente de CI/build, não só no runtime.
 

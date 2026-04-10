@@ -17,7 +17,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):
    - `NODE_ENV=production`
-   - **`HOST` com o domínio do site** → ignorado. **Sem `PORT`** (só `API_PORT`): o servidor faz **`listen(port)` sem host** — o Node usa o bind por defeito (`::` ou `0.0.0.0`), o que cobre proxy em **IPv4 e IPv6**. **`LISTEN_HOST=127.0.0.1`** se o suporte disser que só IPv4. **`BIND_ALL_INTERFACES=1`** força **`0.0.0.0`**. PaaS com **`PORT`** injetado: escuta explícita **`0.0.0.0`**. Nos logs, linhas **`auto-teste 127.0.0.1` / `::1`** mostram se o processo responde em loopback (se falharem ambos, o 503 não é só “porta errada no painel”).
+   - **`HOST` com o domínio do site** → ignorado; bind **`0.0.0.0`** (aceita **`127.0.0.1`** no mesmo host). **Não** usar `listen(port)` sem host neste alojamento: pode dar **`LISTENING` mas `ECONNREFUSED` em loopback** e 503. **`LISTEN_HOST=127.0.0.1`** só se o suporte exigir. **`BIND_ALL_INTERFACES=1`** = **`0.0.0.0`**. Auto-teste: **`127.0.0.1`** deve ser HTTP 200; **`::1`** pode falhar se o socket for só IPv4 — normal se o proxy usar IPv4.
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
@@ -31,11 +31,11 @@ O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` fa
 
 ### Erro 503 no browser
 
-Quase sempre o **Node não está na porta que o proxy usa**, há **duas instâncias**, ou o domínio **não** aponta para esta Node app. Nos logs: **`LISTENING`**, **`auto-teste 127.0.0.1` / `::1`** (devem dar HTTP 200 em `/health`). Se ambos os auto-testes falharem mas aparecer `LISTENING`, cola o log; se passarem e o browser continuar 503, o problema é **painel/DNS/site estático no mesmo domínio**, não o Express.
+Verifica **`socket.address()`** e **`auto-teste 127.0.0.1`** → HTTP 200. Se **`LISTENING`** aparecer mas **`ECONNREFUSED`** em loopback, o bind estava errado (corrige com host **`0.0.0.0` explícito** no código). Se loopback OK e o browser 503 → **painel/DNS/outro site no domínio**.
 
 ### Vários `[boot] index.js carregado` seguidos (mesma porta)
 
-Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000**. O lock é uma **pasta** `gestao-villa-lobos.node.lock/` criada com `mkdir` (atómico) com ficheiro `pid` dentro — evita a corrida que permitia **dois** `LISTENING` e **503**. Lock legado em **ficheiro** com o mesmo nome é ainda respeitado até migrar. O lock **não** é apagado em SIGTERM. `EADDRINUSE` → saída código **0**. Com `HOST=0.0.0.0` e só `API_PORT`, o código **omite** o host no `listen` (não força `127.0.0.1`, para não quebrar proxy em **IPv6**). Uma única app Node por domínio.
+Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000**. O lock é uma **pasta** `gestao-villa-lobos.node.lock/` criada com `mkdir` (atómico) com ficheiro `pid` dentro — evita a corrida que permitia **dois** `LISTENING` e **503**. Lock legado em **ficheiro** com o mesmo nome é ainda respeitado até migrar. O lock **não** é apagado em SIGTERM. `EADDRINUSE` → saída código **0**. Bind explícito **`0.0.0.0`** por defeito em produção. Uma única app Node por domínio.
 
 ### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
 
@@ -55,7 +55,7 @@ Em alojamento partilhado o binário do **esbuild** pode falhar por **permissão*
 - **`index.js`** na raiz (entrada principal); **`server.js`** reexporta para painéis antigos que fixam esse nome.
 - `npm run build` → `dist/` (Vite) + `dist-server/` (API compilada); o Express serve `dist/` + `/api` no **mesmo processo** (`dist` via `process.cwd()`).
 - `postinstall` → `node scripts/postinstall.mjs` (chmod + rebuild esbuild + `prisma generate`).
-- Escuta: `port = PORT` **ou** `API_PORT` **ou** `3000`; em produção **sem** `PORT`, o host pode ser **omitido** (defeito Node). `BIND_ALL_INTERFACES=1` → **`0.0.0.0`**. Logs com **auto-teste** `127.0.0.1` / `::1` ajudam a diagnosticar 503.
+- Escuta: `app.listen(port, host)` com **`0.0.0.0`** por defeito (nunca `listen(port)` só). `BIND_ALL_INTERFACES=1` → **`0.0.0.0`**. Log **`socket.address()`** + auto-teste loopback.
 
 ## Se não aparecer “Node.js App” no teu plano
 
