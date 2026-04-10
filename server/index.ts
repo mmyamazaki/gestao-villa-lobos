@@ -6,6 +6,7 @@
 import 'dotenv/config'
 
 import { existsSync, readFileSync, rmSync, statSync, unlinkSync } from 'node:fs'
+import http from 'node:http'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -100,9 +101,13 @@ function isSafeHttpBindHost(value: string): boolean {
   return true
 }
 
-function resolveListenHost(): string {
+/**
+ * `null` = não passar host ao `listen` — o Node escolhe `::` ou `0.0.0.0` (aceita loopback
+ * IPv4/IPv6 conforme o SO). Fix comum a 503 quando o proxy usa `::1` e a app só escutava em `127.0.0.1`.
+ */
+function resolveListenHost(): string | null {
   const fromList = (process.env.LISTEN_HOST || '').trim()
-  if (fromList) return fromList || '0.0.0.0'
+  if (fromList) return fromList
 
   if (process.env.BIND_ALL_INTERFACES === '1') return '0.0.0.0'
 
@@ -112,8 +117,7 @@ function resolveListenHost(): string {
     NODE_ENV === 'production' && !process.env.PORT?.trim()
 
   /**
-   * O hPanel da Hostinger costuma definir HOST=0.0.0.0 com API_PORT=3000 e **sem** PORT.
-   * Isso fazia o nosso fallback 127.0.0.1 ser anulado → proxy liga a 127.0.0.1 → 503.
+   * Painel com HOST=0.0.0.0 e só API_PORT: não forçar 127.0.0.1 (quebra se o proxy usar IPv6).
    */
   if (
     prodSemPortInjetado &&
@@ -121,30 +125,66 @@ function resolveListenHost(): string {
     (hostLower === '0.0.0.0' || hostLower === '::' || hostLower === '[::]')
   ) {
     console.warn(
-      '[api] HOST=0.0.0.0 (ou ::) com só API_PORT: escuta em 127.0.0.1 para o reverse proxy. LISTEN_HOST=0.0.0.0 ou BIND_ALL_INTERFACES=1 para forçar.',
+      '[api] HOST=0.0.0.0/:: com só API_PORT: a omitir host no listen (defeito do Node). LISTEN_HOST=127.0.0.1 se o suporte exigir só IPv4.',
     )
-    return '127.0.0.1'
+    return null
   }
 
   if (fromHost && isSafeHttpBindHost(fromHost)) return fromHost
 
   if (fromHost && !isSafeHttpBindHost(fromHost) && NODE_ENV === 'production') {
     console.warn(
-      `[api] HOST="${fromHost}" ignorado para bind HTTP (domínio público). A usar endereço local padrão.`,
+      `[api] HOST="${fromHost}" ignorado para bind HTTP (domínio público). A usar defeito do Node.`,
     )
   }
 
-  /**
-   * Hostinger: proxy local → 127.0.0.1. PaaS com PORT injetado → 0.0.0.0.
-   */
   if (NODE_ENV === 'production') {
     const portFromEnv = Boolean(process.env.PORT?.trim())
-    return portFromEnv ? '0.0.0.0' : '127.0.0.1'
+    return portFromEnv ? '0.0.0.0' : null
   }
   return '0.0.0.0'
 }
 
 const listenHost = resolveListenHost()
+
+/** Confirma nos logs se o processo responde em 127.0.0.1 e ::1 (diagnóstico 503 / proxy). */
+function probeLoopbackHealth(listenPort: number): void {
+  if (NODE_ENV !== 'production') return
+
+  const run = (hostname: string, family: 4 | 6) => {
+    const req = http.request(
+      {
+        hostname,
+        port: listenPort,
+        path: '/health',
+        method: 'GET',
+        timeout: 4000,
+        family,
+      },
+      (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c) => chunks.push(c))
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8').trim().slice(0, 64)
+          console.log(
+            `[api] auto-teste ${hostname}:${listenPort}/health → HTTP ${res.statusCode}${body ? ` (${JSON.stringify(body)})` : ''}`,
+          )
+        })
+      },
+    )
+    req.on('error', (err) => {
+      console.warn(`[api] auto-teste ${hostname}:${listenPort}/health → ${err.message}`)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      console.warn(`[api] auto-teste ${hostname}:${listenPort}/health → timeout`)
+    })
+    req.end()
+  }
+
+  run('127.0.0.1', 4)
+  run('::1', 6)
+}
 
 /**
  * Pasta `dist/` do Vite: em alguns hosts `process.cwd()` não é a raiz do repo (entry file
@@ -1125,7 +1165,7 @@ export async function start(): Promise<void> {
     PORT: process.env.PORT ?? '(unset)',
     API_PORT: process.env.API_PORT ?? '(unset)',
     NODE_ENV,
-    host: listenHost,
+    host: listenHost ?? '(omitido — defeito Node)',
     cwd: process.cwd(),
   })
 
@@ -1134,22 +1174,26 @@ export async function start(): Promise<void> {
   }
 
   return new Promise((resolvePromise, reject) => {
-    const server = app.listen(port, listenHost, () => {
+    const onListen = () => {
       console.log('[server] ouvindo na porta', port)
-      console.log('LISTENING', port, listenHost)
+      console.log('LISTENING', port, listenHost ?? '(host omitido)')
       console.log(
-        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → listening on http://${listenHost}:${port}`,
+        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → http://${listenHost ?? 'defeito-node'}:${port}`,
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
       }
       if (NODE_ENV === 'production') {
         console.log(
-          `[api] 503 no browser? Confirme no hPanel porta da app = ${port} e domínio = esta Node app. SSH: curl -sf http://127.0.0.1:${port}/health → ok`,
+          `[api] 503 no browser? hPanel: porta app = ${port}, domínio = esta Node app (não site estático). A seguir: auto-teste loopback.`,
         )
+        probeLoopbackHealth(port)
       }
       resolvePromise()
-    })
+    }
+
+    const server =
+      listenHost != null ? app.listen(port, listenHost, onListen) : app.listen(port, onListen)
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
