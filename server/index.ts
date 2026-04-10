@@ -59,8 +59,10 @@ if (NODE_ENV === 'production') {
   app.set('trust proxy', 1)
 }
 
-/** Padrão Node / Hostinger (Kodee): `process.env.PORT` com fallback 3000 */
-const port = Number(process.env.PORT || 3000)
+/** Produção: `PORT` (PaaS). Dev local: `API_PORT` no .env quando `PORT` não existe. */
+const port = Number(
+  process.env.PORT?.trim() || process.env.API_PORT?.trim() || 3000,
+)
 /** Alguns proxies exigem 127.0.0.1; a maioria aceita 0.0.0.0 */
 const listenHost =
   (process.env.LISTEN_HOST || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0'
