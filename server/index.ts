@@ -154,6 +154,12 @@ app.use(
 )
 app.use(express.json({ limit: '20mb' }))
 
+/** Diagnóstico proxy Hostinger/Kodee: https://domínio/health (texto plano, sem /api). */
+app.get('/health', (_req: Request, res: Response) => {
+  console.log('health check acessado')
+  res.status(200).send('ok')
+})
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, service: 'gestao-villa-lobos-api' })
 })
