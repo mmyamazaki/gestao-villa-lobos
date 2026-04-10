@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { daysLateAfterDueDate, lateFeesOnGross } from '../domain/finance'
+import { applyDiscount, daysLateAfterDueDate, lateFeesOnGross } from '../domain/finance'
 import type { MensalidadeRegistrada } from '../domain/types'
 
 function round2(n: number) {
@@ -45,7 +45,16 @@ function PaymentMensalidadeModalForm({
     return system.isLate ? round2(system.interest) : 0
   }, [m.waivesLateFees, system.isLate, system.interest])
 
-  const defaultLiquid = m.liquidAmount
+  /** Até ao vencimento: líquido contratual (desconto %). Após: bruto (multa/juros sobre base). */
+  const defaultLiquid = useMemo(() => {
+    if (m.waivesLateFees) return round2(m.baseAmount)
+    const due = new Date(m.dueDate + 'T12:00:00')
+    const pay = new Date(paymentDate + 'T12:00:00')
+    if (daysLateAfterDueDate(pay, due) <= 0) {
+      return round2(applyDiscount(m.baseAmount, m.discountPercent))
+    }
+    return round2(m.baseAmount)
+  }, [m.baseAmount, m.dueDate, m.discountPercent, m.waivesLateFees, paymentDate])
   const liquidEditable = true
 
   const [liquidStr, setLiquidStr] = useState(() => defaultLiquid.toFixed(2))

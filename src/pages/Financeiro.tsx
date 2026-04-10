@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { daysLateAfterDueDate, lateFeesOnGross } from '../domain/finance'
+import { projectUnpaidMensalidade } from '../domain/mensalidadeProjection'
 import type { MensalidadeRegistrada } from '../domain/types'
 import { isStudentActiveEnrolled } from '../domain/studentStatus'
 import { useSchool } from '../state/SchoolContext'
@@ -74,39 +75,49 @@ export function Financeiro() {
       .filter((m) => m.studentId === selectedStudentId)
       .sort((a, b) => a.parcelNumber - b.parcelNumber)
       .map((m) => {
-        const discAmount = m.baseAmount - m.liquidAmount
         if (m.status === 'cancelado') {
+          const discAmount = Math.max(0, m.baseAmount - m.liquidAmount)
           return {
             m,
             late: 0,
             fees: { fine: 0, interest: 0, total: 0 },
             discAmount,
+            displayLiquid: m.liquidAmount,
           }
         }
-        const due = new Date(m.dueDate + 'T12:00:00')
-        const payDay = (m.paidAt ?? paymentDate).slice(0, 10)
-        const pay = new Date(payDay + 'T12:00:00')
-        let late = 0
-        let fees = { fine: 0, interest: 0, total: m.liquidAmount }
-        if (m.waivesLateFees) {
-          late = 0
-          fees = { fine: 0, interest: 0, total: m.liquidAmount }
-        } else {
-          late = daysLateAfterDueDate(pay, due)
-          if (late <= 0) {
+        if (m.paidAt) {
+          const discAmount = Math.max(0, m.baseAmount - m.liquidAmount)
+          const due = new Date(m.dueDate + 'T12:00:00')
+          const pay = new Date(m.paidAt.slice(0, 10) + 'T12:00:00')
+          let late = 0
+          let fees = { fine: 0, interest: 0, total: m.liquidAmount }
+          if (m.waivesLateFees) {
             fees = { fine: 0, interest: 0, total: m.liquidAmount }
           } else {
-            const auto = lateFeesOnGross(m.baseAmount, late)
-            const fine = m.manualFine != null ? m.manualFine : auto.fine
-            const interest = m.manualInterest != null ? m.manualInterest : auto.interest
-            fees = {
-              fine,
-              interest,
-              total: m.baseAmount + fine + interest,
+            late = daysLateAfterDueDate(pay, due)
+            if (late <= 0) {
+              fees = { fine: 0, interest: 0, total: m.liquidAmount }
+            } else {
+              const auto = lateFeesOnGross(m.baseAmount, late)
+              const fine = m.manualFine != null ? m.manualFine : auto.fine
+              const interest = m.manualInterest != null ? m.manualInterest : auto.interest
+              fees = {
+                fine,
+                interest,
+                total: m.baseAmount + fine + interest,
+              }
             }
           }
+          return { m, late, fees, discAmount, displayLiquid: m.liquidAmount }
         }
-        return { m, late, fees, discAmount }
+        const proj = projectUnpaidMensalidade(m, paymentDate)
+        return {
+          m,
+          late: proj.late,
+          fees: proj.fees,
+          discAmount: proj.contractualDiscountReais,
+          displayLiquid: proj.displayLiquid,
+        }
       })
   }, [state.mensalidades, selectedStudentId, paymentDate])
 
@@ -409,7 +420,7 @@ export function Financeiro() {
               Nenhuma mensalidade para este aluno.
             </div>
           )}
-          {rows.map(({ m, late, fees, discAmount }) => (
+          {rows.map(({ m, late, fees, discAmount, displayLiquid }) => (
             <article key={`mobile-${m.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -424,7 +435,7 @@ export function Financeiro() {
                 <p>Base: R$ {m.baseAmount.toFixed(2)}</p>
                 <p>Desc.: {m.discountPercent}%</p>
                 <p>Desc. R$: {discAmount.toFixed(2)}</p>
-                <p>Líquido: R$ {m.liquidAmount.toFixed(2)}</p>
+                <p>Líquido: R$ {displayLiquid.toFixed(2)}</p>
                 <p>Atraso: {late} dia(s)</p>
                 <p>Total: {m.status === 'cancelado' ? '—' : `R$ ${fees.total.toFixed(2)}`}</p>
               </div>
@@ -516,7 +527,7 @@ export function Financeiro() {
                   </td>
                 </tr>
               )}
-              {rows.map(({ m, late, fees, discAmount }) => (
+              {rows.map(({ m, late, fees, discAmount, displayLiquid }) => (
                 <tr key={m.id} className="group hover:bg-slate-50/80">
                   <td className="sticky left-0 z-10 whitespace-nowrap border-b border-slate-100 bg-white px-2 py-3 tabular-nums font-medium text-slate-900 shadow-[4px_0_10px_-4px_rgba(15,23,42,0.12)] group-hover:bg-slate-50">
                     {m.parcelNumber}/12
@@ -540,7 +551,7 @@ export function Financeiro() {
                     R$ {discAmount.toFixed(2)}
                   </td>
                   <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
-                    R$ {m.liquidAmount.toFixed(2)}
+                    R$ {displayLiquid.toFixed(2)}
                   </td>
                   <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">{late}</td>
                   <td className="border-b border-slate-100 px-2 py-3 text-right tabular-nums">
