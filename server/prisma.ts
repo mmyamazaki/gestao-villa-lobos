@@ -88,7 +88,38 @@ if (prismaUrl && raw && prismaUrl !== raw) {
   )
 }
 
-/** Cliente Prisma direto — evita proxy que pode falhar em ambientes de hosting restritos. */
-export const prisma = new PrismaClient(
-  prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined,
-)
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient(
+    prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined,
+  )
+}
+
+let prismaInstance = createPrismaClient()
+
+/**
+ * Proxy: após PANIC do query engine, `replacePrismaClientAfterEnginePanic()` troca a instância;
+ * quem importou `prisma` continua a usar o mesmo objeto exportado.
+ */
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, _receiver) {
+    const v = (prismaInstance as unknown as Record<string | symbol, unknown>)[prop]
+    if (typeof v === 'function') {
+      return (v as (...args: unknown[]) => unknown).bind(prismaInstance)
+    }
+    return v
+  },
+}) as PrismaClient
+
+/**
+ * Após `PANIC: timer has gone away`, o mesmo cliente fica corrompido — retentativas de `$connect`
+ * no mesmo objeto não recuperam. Recria o engine com novo `PrismaClient`.
+ */
+export async function replacePrismaClientAfterEnginePanic(): Promise<void> {
+  console.warn('[api] Prisma: PANIC no engine — a recriar cliente.')
+  try {
+    await prismaInstance.$disconnect()
+  } catch {
+    /* ignore */
+  }
+  prismaInstance = createPrismaClient()
+}

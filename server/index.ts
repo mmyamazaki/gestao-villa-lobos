@@ -14,7 +14,7 @@ import cors from 'cors'
 import express, { type Request, type Response } from 'express'
 import { Prisma } from '@prisma/client'
 import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
-import { prisma } from './prisma.js'
+import { prisma, replacePrismaClientAfterEnginePanic } from './prisma.js'
 import {
   courseFromPrisma,
   courseToPrisma,
@@ -994,11 +994,17 @@ function sleep(ms: number) {
 }
 
 /**
- * Vários arranques em paralelo (Hostinger) podem disparar PANIC `timer has gone away` na
- * primeira ligação — retentativas com backoff evitam morrer à toa e logs assustadores.
+ * Vários arranques em paralelo (Hostinger) → PANIC `timer has gone away`. O cliente Prisma
+ * fica inutilizável após PANIC: recriamos o engine entre tentativas e usamos jitter em produção.
  */
 async function connectPrismaWithRetries(): Promise<void> {
-  const max = 8
+  if (process.env.NODE_ENV === 'production') {
+    const jitter = 150 + Math.floor(Math.random() * 2200)
+    console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques paralelos).`)
+    await sleep(jitter)
+  }
+
+  const max = 6
   for (let i = 0; i < max; i++) {
     try {
       await prisma.$connect()
@@ -1012,9 +1018,12 @@ async function connectPrismaWithRetries(): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e)
       const panic = /PANIC|timer has gone away/i.test(msg)
       if (i < max - 1) {
-        const wait = panic ? 400 + i * 200 : 250 + i * 100
+        if (panic && process.env.DATABASE_URL?.trim()) {
+          await replacePrismaClientAfterEnginePanic()
+        }
+        const wait = panic ? 300 + i * 250 : 200 + i * 80
         console.warn(
-          `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC transitório)' : ''}; a aguardar ${wait}ms…`,
+          `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC)' : ''}; a aguardar ${wait}ms…`,
         )
         await sleep(wait)
         continue
