@@ -31,11 +31,11 @@ O build não gerou a pasta **`dist-server/`** (comando de build errado, `tsc` fa
 
 ### Erro 503 no browser
 
-Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`listening on http://0.0.0.0:`** — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
+Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o processo **nem arrancou** (crash antes do `listen`). Depois do redeploy, abre os **logs de runtime** e procura **`LISTENING`** e **`listening on http://127.0.0.1:`** (ou `0.0.0.0` se usares `BIND_ALL_INTERFACES`) — se não aparecer, cola as últimas linhas do log (erros de Prisma, `EADDRINUSE`, etc.).
 
 ### Vários `[boot] index.js carregado` seguidos (mesma porta)
 
-Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. O lock **não** é apagado em SIGTERM/SIGINT: no redeploy, apagar o lock ao receber SIGTERM permitia que um segundo processo obtivesse lock enquanto o primeiro ainda escutava na porta → dois `LISTENING` e **503** no proxy. O lock só deixa de valer quando o PID morre (o próximo arranque remove ficheiro obsoleto). O conteúdo do lock é escrito de forma atómica (`wx` + uma escrita); se outro processo vir o ficheiro ainda **vazio** ou incompleto, **espera** em vez de apagar de imediato (corrida que permitia **dois** `LISTENING`). Se a porta já estiver ocupada (`EADDRINUSE`), o processo sai com **código 0**. No hPanel, confirme **uma única** aplicação Node a apontar para este projeto.
+Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000**. O lock é uma **pasta** `gestao-villa-lobos.node.lock/` criada com `mkdir` (atómico) com ficheiro `pid` dentro — evita a corrida que permitia **dois** `LISTENING` e **503**. Lock legado em **ficheiro** com o mesmo nome é ainda respeitado até migrar. O lock **não** é apagado em SIGTERM. `EADDRINUSE` → saída código **0**. **Não** defina `HOST=0.0.0.0` no painel sem `PORT`: o código força **127.0.0.1** nesse caso (proxy local). Uma única app Node por domínio.
 
 ### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
 

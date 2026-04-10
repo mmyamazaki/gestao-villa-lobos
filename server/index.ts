@@ -5,7 +5,7 @@
  */
 import 'dotenv/config'
 
-import { existsSync, readFileSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -107,6 +107,25 @@ function resolveListenHost(): string {
   if (process.env.BIND_ALL_INTERFACES === '1') return '0.0.0.0'
 
   const fromHost = (process.env.HOST || '').trim()
+  const hostLower = fromHost.toLowerCase()
+  const prodSemPortInjetado =
+    NODE_ENV === 'production' && !process.env.PORT?.trim()
+
+  /**
+   * O hPanel da Hostinger costuma definir HOST=0.0.0.0 com API_PORT=3000 e **sem** PORT.
+   * Isso fazia o nosso fallback 127.0.0.1 ser anulado → proxy liga a 127.0.0.1 → 503.
+   */
+  if (
+    prodSemPortInjetado &&
+    fromHost &&
+    (hostLower === '0.0.0.0' || hostLower === '::' || hostLower === '[::]')
+  ) {
+    console.warn(
+      '[api] HOST=0.0.0.0 (ou ::) com só API_PORT: escuta em 127.0.0.1 para o reverse proxy. LISTEN_HOST=0.0.0.0 ou BIND_ALL_INTERFACES=1 para forçar.',
+    )
+    return '127.0.0.1'
+  }
+
   if (fromHost && isSafeHttpBindHost(fromHost)) return fromHost
 
   if (fromHost && !isSafeHttpBindHost(fromHost) && NODE_ENV === 'production') {
@@ -116,9 +135,7 @@ function resolveListenHost(): string {
   }
 
   /**
-   * Hostinger (e similares): o Apache/LiteSpeed faz proxy para `127.0.0.1:PORT`. Com só
-   * `API_PORT` e sem `PORT`, escutar em `0.0.0.0` por vezes não recebe esse tráfego → 503.
-   * PaaS que injeta `PORT` (Railway, Render, …) costuma precisar de `0.0.0.0`.
+   * Hostinger: proxy local → 127.0.0.1. PaaS com PORT injetado → 0.0.0.0.
    */
   if (NODE_ENV === 'production') {
     const portFromEnv = Boolean(process.env.PORT?.trim())
@@ -1034,8 +1051,19 @@ const BOOT_LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
 function releaseBootLockIfHeld() {
   try {
     const p = join(process.cwd(), BOOT_LOCK_BASENAME)
+    const pidFile = join(p, 'pid')
     if (!existsSync(p)) return
-    if (readFileSync(p, 'utf8').trim() === String(process.pid)) unlinkSync(p)
+    const st = statSync(p)
+    if (st.isDirectory()) {
+      if (!existsSync(pidFile)) return
+      if (readFileSync(pidFile, 'utf8').trim() === String(process.pid)) {
+        rmSync(p, { recursive: true, force: true })
+      }
+      return
+    }
+    if (st.isFile() && readFileSync(p, 'utf8').trim() === String(process.pid)) {
+      unlinkSync(p)
+    }
   } catch {
     /* ignore */
   }

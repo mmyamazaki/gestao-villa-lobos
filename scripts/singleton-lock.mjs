@@ -1,23 +1,30 @@
 /**
- * Evita vários processos Node a fazer listen na mesma porta (ex.: Hostinger a arrancar
- * o mesmo start várias vezes). Só o primeiro mantém-se; os outros saem com código 0.
+ * Uma única instância Node a fazer listen (Hostinger dispara vários arranques).
  *
- * Em Linux, ignora zombies (/proc). **Não** usamos TCP em 127.0.0.1 para “confirmar” o
- * outro processo: em muitos painéis essa ligação falha mesmo com o servidor ativo, o que
- * fazia apagar o lock e arrancar **outra** instância → duas engines Prisma → PANIC
- * `timer has gone away`.
+ * Lock em **diretório** (`mkdir`): atómico no POSIX; evita corrida do lock em ficheiro
+ * (outro processo via `EEXIST` + ficheiro vazio → dois `LISTENING` → 503).
+ *
+ * Migração: se existir o lock **legado** (ficheiro com o mesmo nome), respeita-se o PID
+ * até o processo morrer; depois o caminho passa a ser pasta.
  */
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
-/** Conteúdo completo do lock: só dígitos + newline (evita ler PID a meio do write). */
+const PID_FILENAME = 'pid'
+/** Conteúdo completo: só dígitos + newline */
 const LOCK_BODY = /^\d+\n$/
 
-const MAX_ACQUIRE_ATTEMPTS = 48
-/** Leituras seguidas com ficheiro vazio → provável lock abandonado, remover. */
-const EMPTY_UNLINK_AFTER = 20
+const MAX_ATTEMPTS = 80
+const EMPTY_PID_UNLINK_AFTER = 35
 
 /** true = há processo real (não zombie) com este pid */
 function pidIsLiveNonZombie(pid) {
@@ -40,65 +47,79 @@ function pidIsLiveNonZombie(pid) {
   return true
 }
 
+function readPidFromFile(pidPath) {
+  try {
+    return readFileSync(pidPath, 'utf8')
+  } catch {
+    return null
+  }
+}
+
 export async function acquireSingletonLock() {
   const lockPath = join(process.cwd(), LOCK_BASENAME)
-  let emptyReads = 0
+  const pidFile = join(lockPath, PID_FILENAME)
+  let emptyPidReads = 0
 
   try {
-    for (let attempt = 0; attempt < MAX_ACQUIRE_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      let st = null
       try {
-        /**
-         * Um único `writeFileSync` com `wx` reduz a janela face a open+write separados.
-         * Com `openSync`+`writeSync`, outro processo podia ver `EEXIST`, ler ficheiro **vazio**
-         * e fazer `unlink` antes do PID ser escrito → **duas** instâncias com `LISTENING`.
-         */
-        writeFileSync(lockPath, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' })
-        /**
-         * Não libertar o lock em SIGTERM/SIGINT: no redeploy o painel manda SIGTERM ao processo
-         * antigo e arranca outro logo a seguir. Se apagarmos o lock aqui, o novo processo
-         * obtém lock enquanto o antigo **ainda escuta** na porta → dois LISTENING → 503 no proxy.
-         * O ficheiro fica com o PID até o processo morrer; o próximo arranque remove lock obsoleto.
-         */
-        return true
-      } catch (e) {
-        if (e?.code !== 'EEXIST') {
-          console.error('[boot] aviso: lock de instância única:', e)
-          return true
-        }
+        st = statSync(lockPath)
+      } catch {
+        st = null
+      }
 
-        let raw = ''
+      /* --- Lock legado: ficheiro plano (versões antigas) --- */
+      if (st?.isFile()) {
+        const raw = readFileSync(lockPath, 'utf8')
+        if (LOCK_BODY.test(raw)) {
+          const pid = parseInt(raw.trim(), 10)
+          if (Number.isFinite(pid) && pid > 0 && pidIsLiveNonZombie(pid)) {
+            console.log(
+              `[boot] instância Node já em execução (pid ${pid}); esta cópia encerra para evitar vários listen e 2× Prisma.`,
+            )
+            return false
+          }
+        }
         try {
-          raw = readFileSync(lockPath, 'utf8')
+          unlinkSync(lockPath)
         } catch {
-          await sleep(25 + Math.floor(Math.random() * 55))
-          continue
+          /* outro processo alterou */
         }
+        await sleep(20 + Math.floor(Math.random() * 40))
+        continue
+      }
 
-        if (!LOCK_BODY.test(raw)) {
-          if (raw.trim() === '') {
-            emptyReads++
-            if (emptyReads >= EMPTY_UNLINK_AFTER) {
-              try {
-                unlinkSync(lockPath)
-              } catch {
-                /* outro processo removeu */
-              }
-              emptyReads = 0
+      /* --- Lock novo: diretório --- */
+      if (st?.isDirectory()) {
+        const raw = readPidFromFile(pidFile)
+        if (raw === null) {
+          emptyPidReads++
+          if (emptyPidReads >= EMPTY_PID_UNLINK_AFTER) {
+            try {
+              rmSync(lockPath, { recursive: true, force: true })
+            } catch {
+              /* ignore */
             }
-          } else {
-            emptyReads = 0
+            emptyPidReads = 0
           }
           await sleep(25 + Math.floor(Math.random() * 55))
           continue
         }
 
-        emptyReads = 0
+        if (!LOCK_BODY.test(raw)) {
+          emptyPidReads = 0
+          await sleep(25 + Math.floor(Math.random() * 55))
+          continue
+        }
+
+        emptyPidReads = 0
         const pid = parseInt(raw.trim(), 10)
         if (!Number.isFinite(pid) || pid <= 0 || !pidIsLiveNonZombie(pid)) {
           try {
-            unlinkSync(lockPath)
+            rmSync(lockPath, { recursive: true, force: true })
           } catch {
-            /* outro processo removeu */
+            /* ignore */
           }
           continue
         }
@@ -108,8 +129,42 @@ export async function acquireSingletonLock() {
         )
         return false
       }
+
+      /* --- Criar diretório de lock (atómico) --- */
+      try {
+        mkdirSync(lockPath)
+      } catch (e) {
+        if (e?.code === 'EEXIST') {
+          await sleep(25 + Math.floor(Math.random() * 55))
+          continue
+        }
+        console.error('[boot] aviso: lock mkdir:', e)
+        return true
+      }
+
+      try {
+        writeFileSync(pidFile, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' })
+        /**
+         * Não libertar lock em SIGTERM: redeploy com processo antigo a escutar + novo com lock
+         * causava dois LISTENING. O lock só deixa de valer quando o PID morre.
+         */
+        return true
+      } catch (e) {
+        try {
+          rmSync(lockPath, { recursive: true, force: true })
+        } catch {
+          /* ignore */
+        }
+        if (e?.code === 'EEXIST') {
+          await sleep(25 + Math.floor(Math.random() * 55))
+          continue
+        }
+        console.error('[boot] aviso: lock pid file:', e)
+        return true
+      }
     }
-    console.error('[boot] aviso: não foi possível obter lock após várias tentativas; a continuar sem lock.')
+
+    console.error('[boot] aviso: não foi possível obter lock; a continuar sem lock.')
     return true
   } catch (e) {
     console.error('[boot] aviso: lock de instância única indisponível:', e)
