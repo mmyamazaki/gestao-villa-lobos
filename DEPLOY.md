@@ -1,49 +1,44 @@
-# Deploy definitivo (API + site no mesmo URL)
+# Deploy na web (produção)
 
-O painel da Hostinger que **só** faz `npm run build` + pasta `dist` é **hospedagem estática**: **não executa Node**, logo **não existe `/api`**. Isso não se “liga” no `package.json` — é o tipo de produto.
+App full-stack: **Express + Prisma** serve a API (`/api/*`) e o frontend estático (`dist/`). O comando **`npm start`** garante Prisma client, compila o servidor se faltar `dist-server/` e sobe o Node.
 
-## Solução recomendada (uma vez)
+## Requisitos
 
-Subir **um único serviço** que corre `npm run build` e depois `npm start` (Express serve `dist/` + rotas `/api`).
+- **Node.js 20+** (ver `engines` em `package.json`)
+- **PostgreSQL** (ex.: Supabase) e variável **`DATABASE_URL`**
 
-### Opção A — Render.com (grátis possível)
+## Variáveis de ambiente no servidor
 
-1. Conta em [Render](https://render.com).
-2. **New → Blueprint** (ou Web Service) e liga este repositório.
-3. Usa o ficheiro `render.yaml` ou cria um **Web Service** manualmente:
-   - **Build command:** `npm ci && npm run build`
-   - **Start command:** `npm start`
-   - **Health check path:** `/api/health`
-4. No painel, define **todas** as variáveis: `DATABASE_URL`, `API_PORT` (ou só `PORT` se o Render injetar), `VITE_SUPABASE_*`, `VITE_ADMIN_EMAIL`, **`ADMIN_SESSION_SECRET`** (mín. 8 caracteres; login admin no servidor).
-5. Abre o URL que o Render der (ex.: `https://gestao-villa-lobos.onrender.com`) — **aí** o site e a API estão no mesmo domínio.
+| Variável | Obrigatório | Notas |
+|----------|-------------|--------|
+| `DATABASE_URL` | Sim | Connection string do Postgres (Supabase). Preferir `db.<ref>.supabase.co:5432`. |
+| `PORT` | Sim (PaaS) | Hostinger e similares injetam automaticamente. |
+| `NODE_ENV` | Recomendado | `production` |
+| `ADMIN_SESSION_SECRET` | Sim em produção | Mín. 8 caracteres; ver `.env.example`. |
+| `ALLOWED_ORIGINS` | Opcional | Origens CORS separadas por vírgula; vazio = permite qualquer origem. |
+| `LISTEN_HOST` / `HOST` | Se 503 no proxy | Tentar `127.0.0.1` ou `0.0.0.0` conforme o painel. |
 
-### Opção B — Docker (VPS, Fly.io, etc.)
+**Build do frontend:** as variáveis `VITE_*` são lidas no **`npm run build`**; definas no ambiente de CI/build, não só no runtime.
+
+## Comandos (painel ou CI)
 
 ```bash
-docker build \
-  --build-arg DATABASE_URL="postgresql://..." \
-  --build-arg VITE_SUPABASE_URL="https://....supabase.co" \
-  --build-arg VITE_SUPABASE_ANON_KEY="..." \
-  --build-arg VITE_ADMIN_EMAIL="..." \
-  -t gestao-villa-lobos .
-docker run -p 8080:8080 \
-  -e DATABASE_URL="postgresql://..." \
-  -e ADMIN_SESSION_SECRET="string-min-8-chars" \
-  -e PORT=8080 gestao-villa-lobos
+npm ci
+npm run build
+npm start
 ```
 
-Ajusta `PORT` conforme o host.
+- **`npm run build`**: gera `dist/` (Vite) e `dist-server/` (TypeScript da API).
+- Não use só `vite build` sem o `tsc` do servidor.
+- Se o host desativar scripts no `npm install`, o **`npm start`** tenta `prisma generate` e compilar o servidor quando necessário.
 
-### Se quiseres manter a Hostinger só para o domínio
+## Verificação pós-deploy
 
-- Coloca o app **Render/Fly/outro** como está acima.
-- No DNS da Hostinger, aponta o domínio (CNAME) para o URL do PaaS **ou** usa a Hostinger só para redirecionamento.
+- `https://seu-dominio/api/health` → `{"ok":true,...}`
+- `https://seu-dominio/api/health/db` → base acessível
+- `https://seu-dominio/api/health/schema` → auditoria de tabelas/RLS (opcional)
 
-### Hostinger “só estática” + API noutro sítio
+## Ficheiro de entrada
 
-1. Deploy da API num serviço Node (Render, etc.).
-2. No **build** do site na Hostinger, define `VITE_API_BASE_URL=https://url-da-api` para o bundle saber onde chamar a API.
-
----
-
-**Resumo:** o fallback Supabase no browser ajuda a **ler** dados sem Node; **gravar** e lógica de negócio completas continuam a precisar da API ou de políticas Supabase avançadas. Para fechar o ciclo de forma limpa, usa **um processo Node** em produção como acima.
+- **`npm start`** → `scripts/start-production.mjs`
+- Painéis que exijam **Entry file** → `index.js` (delega para o mesmo fluxo)
