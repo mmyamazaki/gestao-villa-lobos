@@ -1,13 +1,13 @@
+import 'dotenv/config'
 import { acquireSingletonLock } from './scripts/singleton-lock.mjs'
-
-if (!acquireSingletonLock()) {
-  process.exit(0)
-}
 
 console.log('[boot] index.js carregado')
 
 ;(async () => {
   try {
+    if (!(await acquireSingletonLock())) {
+      process.exit(0)
+    }
     await import('./scripts/start-production.mjs')
     console.log('[boot] start-production.mjs carregado')
   } catch (err) {

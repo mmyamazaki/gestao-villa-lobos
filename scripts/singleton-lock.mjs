@@ -2,8 +2,9 @@
  * Evita vários processos Node a fazer listen na mesma porta (ex.: Hostinger a arrancar
  * o mesmo start várias vezes). Só o primeiro mantém-se; os outros saem com código 0.
  *
- * Em Linux, `kill(pid, 0)` ainda “vê” zombies — tratamos estado Z em /proc como lock obsoleto,
- * senão todas as novas instâncias saem e o proxy fica sem backend (503).
+ * - Ignora zombies (Linux /proc).
+ * - Se o PID do lock está “vivo” mas **nada aceita TCP em 127.0.0.1:PORT**, o lock é
+ *   obsoleto (processo errado, rede, ou servidor antigo já morreu) — remove-se e continua.
  */
 import {
   closeSync,
@@ -13,9 +14,45 @@ import {
   unlinkSync,
   writeSync,
 } from 'node:fs'
+import net from 'node:net'
 import { join } from 'node:path'
 
 const LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
+
+function resolveBootPort() {
+  const raw = process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 && n <= 65535 ? n : 3000
+}
+
+/** true = algo aceita ligação TCP em 127.0.0.1 (ex.: o nosso Express já em execução) */
+function tcpAcceptsLocal(port) {
+  return new Promise((resolve) => {
+    const c = net.createConnection({ port, host: '127.0.0.1' })
+    const done = (v) => {
+      try {
+        c.destroy()
+      } catch {
+        /* ignore */
+      }
+      resolve(v)
+    }
+    c.setTimeout(600, () => done(false))
+    c.on('connect', () => done(true))
+    c.on('error', () => done(false))
+  })
+}
+
+/** Dá tempo ao outro processo chegar ao `listen` antes de tratar a porta como livre. */
+async function tcpAcceptsLocalWithGrace(port) {
+  const tries = 14
+  const gapMs = 280
+  for (let i = 0; i < tries; i++) {
+    if (await tcpAcceptsLocal(port)) return true
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, gapMs))
+  }
+  return false
+}
 
 /** true = há processo real (não zombie) com este pid */
 function pidIsLiveNonZombie(pid) {
@@ -38,7 +75,7 @@ function pidIsLiveNonZombie(pid) {
   return true
 }
 
-export function acquireSingletonLock() {
+export async function acquireSingletonLock() {
   const lockPath = join(process.cwd(), LOCK_BASENAME)
   const release = () => {
     try {
@@ -70,12 +107,27 @@ export function acquireSingletonLock() {
           try {
             unlinkSync(lockPath)
           } catch {
-            /* outro processo removeu — voltar a tentar */
+            /* outro processo removeu */
           }
           continue
         }
+
+        const port = resolveBootPort()
+        const serving = await tcpAcceptsLocalWithGrace(port)
+        if (!serving) {
+          console.log(
+            `[boot] lock indica pid ${pid} ativo mas 127.0.0.1:${port} não responde após espera — lock obsoleto, a retomar.`,
+          )
+          try {
+            unlinkSync(lockPath)
+          } catch {
+            /* ignore */
+          }
+          continue
+        }
+
         console.log(
-          `[boot] instância Node já em execução (pid ${pid}); esta cópia encerra para evitar vários listen na mesma porta.`,
+          `[boot] instância já a servir em 127.0.0.1:${port} (pid ${pid}); esta cópia encerra.`,
         )
         return false
       }
