@@ -7,17 +7,17 @@
  * fazia apagar o lock e arrancar **outra** instância → duas engines Prisma → PANIC
  * `timer has gone away`.
  */
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readFileSync,
-  unlinkSync,
-  writeSync,
-} from 'node:fs'
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 const LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
+/** Conteúdo completo do lock: só dígitos + newline (evita ler PID a meio do write). */
+const LOCK_BODY = /^\d+\n$/
+
+const MAX_ACQUIRE_ATTEMPTS = 48
+/** Leituras seguidas com ficheiro vazio → provável lock abandonado, remover. */
+const EMPTY_UNLINK_AFTER = 20
 
 /** true = há processo real (não zombie) com este pid */
 function pidIsLiveNonZombie(pid) {
@@ -42,13 +42,17 @@ function pidIsLiveNonZombie(pid) {
 
 export async function acquireSingletonLock() {
   const lockPath = join(process.cwd(), LOCK_BASENAME)
+  let emptyReads = 0
 
   try {
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < MAX_ACQUIRE_ATTEMPTS; attempt++) {
       try {
-        const fd = openSync(lockPath, 'wx')
-        writeSync(fd, `${process.pid}\n`, 'utf8')
-        closeSync(fd)
+        /**
+         * Um único `writeFileSync` com `wx` reduz a janela face a open+write separados.
+         * Com `openSync`+`writeSync`, outro processo podia ver `EEXIST`, ler ficheiro **vazio**
+         * e fazer `unlink` antes do PID ser escrito → **duas** instâncias com `LISTENING`.
+         */
+        writeFileSync(lockPath, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' })
         /**
          * Não libertar o lock em SIGTERM/SIGINT: no redeploy o painel manda SIGTERM ao processo
          * antigo e arranca outro logo a seguir. Se apagarmos o lock aqui, o novo processo
@@ -61,8 +65,35 @@ export async function acquireSingletonLock() {
           console.error('[boot] aviso: lock de instância única:', e)
           return true
         }
-        const raw = readFileSync(lockPath, 'utf8').trim()
-        const pid = parseInt(raw, 10)
+
+        let raw = ''
+        try {
+          raw = readFileSync(lockPath, 'utf8')
+        } catch {
+          await sleep(25 + Math.floor(Math.random() * 55))
+          continue
+        }
+
+        if (!LOCK_BODY.test(raw)) {
+          if (raw.trim() === '') {
+            emptyReads++
+            if (emptyReads >= EMPTY_UNLINK_AFTER) {
+              try {
+                unlinkSync(lockPath)
+              } catch {
+                /* outro processo removeu */
+              }
+              emptyReads = 0
+            }
+          } else {
+            emptyReads = 0
+          }
+          await sleep(25 + Math.floor(Math.random() * 55))
+          continue
+        }
+
+        emptyReads = 0
+        const pid = parseInt(raw.trim(), 10)
         if (!Number.isFinite(pid) || pid <= 0 || !pidIsLiveNonZombie(pid)) {
           try {
             unlinkSync(lockPath)
