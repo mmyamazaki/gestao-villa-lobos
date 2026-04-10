@@ -35,7 +35,7 @@ Quase sempre o **Node não está a escutar** na porta que o proxy espera, ou o p
 
 ### Vários `[boot] index.js carregado` seguidos (mesma porta)
 
-Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. No hPanel, confirme **uma única** aplicação Node a apontar para este projeto e **não** duplicar o comando de arranque (entry + start ao mesmo tempo com o mesmo efeito).
+Se o painel **arranca o mesmo `npm start` várias vezes em paralelo**, vários processos disputam a porta **3000** e o site fica instável. O projeto usa um **ficheiro de lock** (`gestao-villa-lobos.node.lock` na pasta da app) para só **uma** instância escutar; as outras terminam com mensagem explícita nos logs. O lock ignora **PIDs zombies** em Linux (evita 503 quando o processo anterior morreu sem libertar a porta de forma limpa). No hPanel, confirme **uma única** aplicação Node a apontar para este projeto e **não** duplicar o comando de arranque (entry + start ao mesmo tempo com o mesmo efeito).
 
 ### HTTP 500 na API — Prisma `PANIC` / `timer has gone away`
 
