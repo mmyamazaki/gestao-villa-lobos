@@ -487,6 +487,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef<SchoolState | null>(null)
   /** Incrementado após PUT/PATCH de cursos; evita que GET /api/school/core (lento) sobrescreva com snapshot antigo. */
   const remoteCoursesMutationGen = useRef(0)
+  /** Evita repetir alerta de inconsistência (mensalidades sem alunos) em loop de carga. */
+  const inconsistentDataAlertedRef = useRef(false)
 
   const [state, setState] = useState<SchoolState>(() => {
     const sec = loadSecondaryPartial()
@@ -516,6 +518,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setState((prev) => {
           const coreStale = remoteCoursesMutationGen.current !== genAtFetchStart
+          const keepPreviousStudents =
+            core.students.length === 0 &&
+            prev.students.length > 0 &&
+            prev.mensalidades.length > 0
           return reconcileTeacherSchedulesWithStudents(
             normalizeState({
               mensalidades: prev.mensalidades,
@@ -524,10 +530,30 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               settings: prev.settings,
               courses: coreStale ? prev.courses : core.courses,
               teachers: core.teachers,
-              students: core.students,
+              students: keepPreviousStudents ? prev.students : core.students,
             }),
           )
         })
+      }
+
+      const warnIfCoreWithoutStudentsButMensalidades = (
+        core: { students: Student[] },
+        list: MensalidadeRegistrada[],
+      ) => {
+        if (core.students.length > 0 || list.length === 0) return
+        const uniqueStudentIds = new Set(list.map((m) => m.studentId).filter(Boolean))
+        if (uniqueStudentIds.size === 0) return
+        console.error(
+          '[SchoolProvider] Inconsistência detectada: mensalidades carregadas, mas core sem alunos.',
+          { mensalidades: list.length, uniqueStudentIds: uniqueStudentIds.size },
+        )
+        if (inconsistentDataAlertedRef.current) return
+        inconsistentDataAlertedRef.current = true
+        window.alert(
+          'Detectamos mensalidades em aberto, mas nenhum aluno foi carregado.\n\n' +
+            'Isso geralmente indica falha temporária da API (/api/school/core) ou permissão RLS no Supabase para a tabela Student.\n\n' +
+            'Ação recomendada: recarregue a página. Se persistir, verifique /api/health/db e as políticas SELECT em Course, Teacher e Student.',
+        )
       }
 
       try {
@@ -559,6 +585,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
         if (!cancelled) {
           const list = await fetchMensalidadesRemoteBestEffort()
+          warnIfCoreWithoutStudentsButMensalidades(core, list)
           if (!cancelled) {
             setState((prev) => ({
               ...prev,
@@ -575,6 +602,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             applyCore(core)
             if (!cancelled) {
               const list = await fetchMensalidadesRemoteBestEffort()
+              warnIfCoreWithoutStudentsButMensalidades(core, list)
               if (!cancelled) {
                 setState((prev) => ({
                   ...prev,
