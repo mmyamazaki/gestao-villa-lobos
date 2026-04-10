@@ -46,7 +46,7 @@ function PaymentMensalidadeModalForm({
   }, [m.waivesLateFees, system.isLate, system.interest])
 
   const defaultLiquid = m.liquidAmount
-  const liquidEditable = !system.isLate
+  const liquidEditable = true
 
   const [liquidStr, setLiquidStr] = useState(() => defaultLiquid.toFixed(2))
   const [fineStr, setFineStr] = useState(() =>
@@ -64,15 +64,12 @@ function PaymentMensalidadeModalForm({
     ? round2(parseFloat(liquidStr.replace(',', '.')) || 0)
     : round2(m.liquidAmount)
 
-  /** Em atraso: encargos sobre o bruto. Em dia (ou 1ª parcela): líquido editável + multa/juros opcionais. */
+  /** Total sempre considera líquido efetivo + multa + juros (quando aplicável). */
   const total = useMemo(() => {
     if (m.waivesLateFees) return liquidEff
-    if (system.isLate) return round2(m.baseAmount + fine + interest)
     return round2(liquidEff + fine + interest)
   }, [
     m.waivesLateFees,
-    m.baseAmount,
-    system.isLate,
     liquidEff,
     fine,
     interest,
@@ -107,7 +104,7 @@ function PaymentMensalidadeModalForm({
         manualFine: fine,
         manualInterest: interest,
         adjustmentNotes: notes.trim() || undefined,
-        ...(liquidEditable ? { liquidAmount: liquidEff } : {}),
+        liquidAmount: liquidEff,
       })
       onClose()
     } catch {
@@ -151,12 +148,6 @@ function PaymentMensalidadeModalForm({
               Bruto:{' '}
               <span className="font-medium tabular-nums">R$ {m.baseAmount.toFixed(2)}</span>
             </p>
-            {!liquidEditable && (
-              <p>
-                Líquido (contrato):{' '}
-                <span className="font-medium tabular-nums">R$ {m.liquidAmount.toFixed(2)}</span>
-              </p>
-            )}
             {m.waivesLateFees ? (
               <p className="col-span-2">
                 1ª parcela: sem multa/juros no cadastro. Ajuste o <strong>valor líquido</strong> abaixo
@@ -164,8 +155,8 @@ function PaymentMensalidadeModalForm({
               </p>
             ) : system.isLate ? (
               <p className="col-span-2">
-                Atraso: <span className="font-semibold">{system.late}</span> dia(s) — total padrão é{' '}
-                <strong>bruto + multa + juros</strong>; o líquido contratual é só referência aqui.
+                Atraso: <span className="font-semibold">{system.late}</span> dia(s). Você pode ajustar o{' '}
+                <strong>valor líquido</strong> (desconto/acordo) e também editar multa/juros.
               </p>
             ) : (
               <p className="col-span-2">
@@ -175,24 +166,22 @@ function PaymentMensalidadeModalForm({
             )}
           </div>
 
-          {liquidEditable && (
-            <label className="block text-xs font-medium text-slate-700">
-              Valor líquido desta baixa (R$)
-              <input
-                type="number"
-                min={0}
-                max={m.baseAmount}
-                step={0.01}
-                value={liquidStr}
-                onChange={(e) => setLiquidStr(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm tabular-nums outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
-              />
-              <span className="mt-0.5 block text-[10px] text-slate-500">
-                Valor de referência (contrato): R$ {round2(defaultLiquid).toFixed(2)} · teto: bruto R${' '}
-                {m.baseAmount.toFixed(2)}
-              </span>
-            </label>
-          )}
+          <label className="block text-xs font-medium text-slate-700">
+            Valor líquido desta baixa (R$)
+            <input
+              type="number"
+              min={0}
+              max={m.baseAmount}
+              step={0.01}
+              value={liquidStr}
+              onChange={(e) => setLiquidStr(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm tabular-nums outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+            />
+            <span className="mt-0.5 block text-[10px] text-slate-500">
+              Valor de referência (contrato): R$ {round2(defaultLiquid).toFixed(2)} · teto: bruto R${' '}
+              {m.baseAmount.toFixed(2)}
+            </span>
+          </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium text-slate-700">
