@@ -12,7 +12,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - **Versão Node:** **20.x** (recomendado pelo suporte Hostinger para Node App).
    - **Gerenciador de pacotes:** `npm`.
    - **Comando de instalação:** deixa vazio ou `npm install` (muitos painéis fazem automático).
-   - **Comando de construção / Build:** **`npm run build`** ou **`npm ci && npm run build`** — **obrigatório** gerar **`dist/`** (Vite) **e** **`dist-server/server/index.js`** (`tsc`). **Não** uses só **`vite build`**: isso **não** cria `dist-server/` e o arranque rebenta com *Cannot find module*.
+   - **Comando de construção / Build:** preferir **`npm run build`** (Vite + `tsc`). Se o painel só correr **`vite build`**, o **`npm start`** ainda assim **recompila a API** quando `server/**/*.ts` é mais novo que `dist-server/` (o `prestart` corre `tsc`). Sem `typescript` instalado no servidor, esse passo falha — mantenha **`typescript` em `dependencies`** (já está no projeto).
    - **Ficheiro de entrada / Entry file:** **`index.js`** (na raiz do repo). Alguns painéis só aceitam este nome; **`server.js`** na raiz reexporta o mesmo e também funciona. Em Linux, `dist-server` ≠ `Dist-Server`.
    - **Comando de arranque / Start:** **`npm start`** — corre **`prestart`** (`ensure-dist-server.mjs`): se faltar `dist-server/server/index.js`, tenta **`tsc`** de novo. **Evita** `node server.js` direto no painel (o `prestart` não corre).
 4. Em **Variáveis de ambiente**, adiciona (os mesmos nomes do teu `.env` local):

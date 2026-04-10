@@ -5,6 +5,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { serverBundleNeedsRebuild } from './lib/server-bundle-needs-rebuild.mjs'
+
 const root = process.cwd()
 const target = join(root, 'dist-server', 'server', 'index.js')
 const prismaClientDir = join(root, 'node_modules', '.prisma', 'client')
@@ -35,7 +37,7 @@ function ensurePrismaClient() {
 }
 
 function compileServer() {
-  console.error('[start] Falta dist-server/server/index.js — a compilar servidor…')
+  console.error('[start] A compilar servidor (tsc -p tsconfig.server.json)…')
   if (existsSync(tscJs)) {
     const r = run(process.execPath, [tscJs, '-p', 'tsconfig.server.json'])
     if (r.status === 0) return true
@@ -48,10 +50,13 @@ if (!ensurePrismaClient()) {
   process.exit(1)
 }
 
-if (!existsSync(target)) {
+if (!existsSync(target) || serverBundleNeedsRebuild(root)) {
+  if (existsSync(target)) {
+    console.error('[start] Bundle API desatualizado (TS mais novo) — a recompilar…')
+  }
   if (!compileServer() || !existsSync(target)) {
     console.error(
-      '[start] Build do servidor em falta. No painel: npm run build (Vite + tsc), ou npm install com scripts ativos.',
+      '[start] Build do servidor em falta ou tsc falhou. No painel: npm run build, ou typescript em dependencies.',
     )
     process.exit(1)
   }
