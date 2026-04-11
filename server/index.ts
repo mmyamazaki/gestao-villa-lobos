@@ -1310,7 +1310,7 @@ async function connectPrismaWithRetries(): Promise<void> {
       if (i > 0) {
         console.log(`[api] Prisma ligado ao Postgres após ${i + 1} tentativa(s).`)
       } else {
-        console.log('[api] Prisma ligado ao Postgres (engine pronta antes do HTTP).')
+        console.log('[api] Prisma ligado ao Postgres.')
       }
       return
     } catch (e) {
@@ -1329,7 +1329,8 @@ async function connectPrismaWithRetries(): Promise<void> {
       }
       console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
       releaseBootLockIfHeld()
-      process.exit(1)
+      // Não fazer process.exit: o HTTP já está a ouvir; rotas que usam Prisma falham até haver ligação.
+      // Isto evita 503 no proxy (LiteSpeed) enquanto o engine retenta ou o utilizador corrige a URL.
     }
   }
 }
@@ -1348,10 +1349,11 @@ export async function start(): Promise<void> {
     cwd: process.cwd(),
   })
 
-  if (process.env.DATABASE_URL?.trim()) {
-    await connectPrismaWithRetries()
-  }
-
+  /**
+   * Hostinger/LiteSpeed: o proxy falha com 503 se o Node ainda não aceita ligações HTTP.
+   * Antigamente: await Prisma $connect (vários segundos com PANIC/retry) **antes** de listen() → janela de 503.
+   * Agora: listen() primeiro; Prisma liga em background (GET /api/health e ficheiros estáticos respondem já).
+   */
   return new Promise((resolvePromise, reject) => {
     const server = app.listen(port, listenHost, () => {
       const addr = server.address()
@@ -1363,6 +1365,11 @@ export async function start(): Promise<void> {
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
+      }
+      if (process.env.DATABASE_URL?.trim()) {
+        void connectPrismaWithRetries().catch((e) => {
+          console.error('[api] Prisma: ligação em background não concluída (HTTP continua ativo).', e)
+        })
       }
       if (NODE_ENV === 'production') {
         const unixPath = unixSocketPathFromAddress(addr)
