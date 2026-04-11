@@ -15,12 +15,23 @@ import bcrypt from 'bcryptjs'
 import cors from 'cors'
 import express, { type Request, type Response } from 'express'
 import { Prisma } from '@prisma/client'
-import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
+import type {
+  ClassSessionLog,
+  Course,
+  MensalidadeRegistrada,
+  ReplacementClass,
+  Student,
+  Teacher,
+} from '../src/domain/types.js'
 import { prisma, replacePrismaClientAfterEnginePanic } from './prisma.js'
 import {
   courseFromPrisma,
   courseToPrisma,
+  lessonLogFromPrisma,
+  lessonLogToPrismaUnchecked,
   mensalidadeFromPrisma,
+  replacementClassFromPrisma,
+  replacementClassToPrismaUnchecked,
   mensalidadeToPrismaUnchecked,
   normalizeCourseFromClient,
   studentFromPrisma,
@@ -335,7 +346,20 @@ const REQUIRED_TABLE_COLUMNS: Record<string, string[]> = {
     'adjustment_notes',
   ],
   LessonLog: ['id', 'teacherId', 'studentId', 'lessonDate', 'slotKey'],
-  ReplacementClass: ['id', 'studentId', 'teacherId', 'date', 'startTime'],
+  ReplacementClass: [
+    'id',
+    'studentId',
+    'studentName',
+    'teacherId',
+    'teacherName',
+    'date',
+    'startTime',
+    'duration',
+    'status',
+    'content',
+    'present',
+    'updatedAt',
+  ],
   SchoolSettings: ['id', 'observacoesInternas'],
   admins: ['id', 'email', 'password_hash', 'created_at', 'updated_at'],
 }
@@ -1106,6 +1130,116 @@ app.put('/api/mensalidades/:id', async (req: Request, res: Response) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao salvar mensalidade' })
+  }
+})
+
+function shouldReturnEmptyLessonLogsForSchemaDrift(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/panic|timer has gone away/i.test(msg)) return false
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return e.code === 'P2021' || e.code === 'P2022'
+  }
+  return (
+    (/does not exist|não existe|Could not find the table/i.test(msg) &&
+      /LessonLog|lesson_log/i.test(msg)) ||
+    (/column/i.test(msg) && /does not exist/i.test(msg))
+  )
+}
+
+app.get('/api/lesson-logs', async (_req: Request, res: Response) => {
+  try {
+    const rows = await prisma.lessonLog.findMany({
+      orderBy: [{ lessonDate: 'desc' }, { updatedAt: 'desc' }],
+    })
+    res.json(rows.map(lessonLogFromPrisma))
+  } catch (e) {
+    console.error('[api/lesson-logs]', e)
+    if (shouldReturnEmptyLessonLogsForSchemaDrift(e)) {
+      console.warn(
+        '[api/lesson-logs] schema desatualizado — lista vazia. No Supabase: `npx prisma db push` (com DATABASE_URL).',
+      )
+      res.json([])
+      return
+    }
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao listar registos de aula' })
+  }
+})
+
+app.put('/api/lesson-logs/:id', async (req: Request, res: Response) => {
+  try {
+    const paramId = routeParamId(req.params.id)
+    const body = req.body as ClassSessionLog
+    if (!paramId || paramId !== body?.id?.trim()) {
+      res.status(400).json({ error: 'ID inconsistente ou ausente.' })
+      return
+    }
+    const data = lessonLogToPrismaUnchecked(body)
+    await prisma.lessonLog.upsert({
+      where: { id: body.id },
+      create: data,
+      update: data,
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[api/lesson-logs PUT]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao salvar registo de aula' })
+  }
+})
+
+function shouldReturnEmptyReplacementClassesForSchemaDrift(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/panic|timer has gone away/i.test(msg)) return false
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return e.code === 'P2021' || e.code === 'P2022'
+  }
+  return (
+    (/does not exist|não existe|Could not find the table/i.test(msg) &&
+      /ReplacementClass|replacement_class/i.test(msg)) ||
+    (/column/i.test(msg) && /does not exist/i.test(msg))
+  )
+}
+
+app.get('/api/replacement-classes', async (_req: Request, res: Response) => {
+  try {
+    const rows = await prisma.replacementClass.findMany({
+      orderBy: [{ date: 'desc' }, { updatedAt: 'desc' }],
+    })
+    res.json(rows.map(replacementClassFromPrisma))
+  } catch (e) {
+    console.error('[api/replacement-classes]', e)
+    if (shouldReturnEmptyReplacementClassesForSchemaDrift(e)) {
+      console.warn(
+        '[api/replacement-classes] schema desatualizado — lista vazia. No Supabase: `npx prisma db push` (com DATABASE_URL).',
+      )
+      res.json([])
+      return
+    }
+    res.status(500).json({
+      error: e instanceof Error ? e.message : 'Erro ao listar aulas de reposição',
+    })
+  }
+})
+
+app.put('/api/replacement-classes/:id', async (req: Request, res: Response) => {
+  try {
+    const paramId = routeParamId(req.params.id)
+    const body = req.body as ReplacementClass
+    if (!paramId || paramId !== body?.id?.trim()) {
+      res.status(400).json({ error: 'ID inconsistente ou ausente.' })
+      return
+    }
+    const data = replacementClassToPrismaUnchecked(body)
+    await prisma.replacementClass.upsert({
+      where: { id: body.id },
+      create: data,
+      update: data,
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[api/replacement-classes PUT]', e)
+    res.status(500).json({
+      error: e instanceof Error ? e.message : 'Erro ao salvar aula de reposição',
+    })
   }
 })
 

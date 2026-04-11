@@ -1,6 +1,7 @@
 // Schema PostgreSQL (Supabase). Cursos, professores e alunos são persistidos via API + Prisma.
 // Parcelas: persistidas na tabela Mensalidade (API PUT ao salvar matrícula e ao registrar pagamento).
-// Logs e reposições ainda podem usar apenas o armazenamento local do navegador.
+// Registos de aula (LessonLog): sincronizados via API PUT/GET /api/lesson-logs (+ Supabase opcional).
+// Reposições (ReplacementClass): sincronizadas via API /api/replacement-classes (+ Supabase opcional).
 
 generator client {
   provider = "prisma-client-js"
@@ -97,15 +98,19 @@ model LessonLog {
 model ReplacementClass {
   id          String   @id
   studentId   String
-  studentNome String
+  /** Coluna no Postgres/Supabase: `studentName` */
+  studentNome String   @map("studentName")
   teacherId   String
-  teacherNome String
+  /** Coluna no Postgres/Supabase: `teacherName` */
+  teacherNome String   @map("teacherName")
   date        String
   startTime   String
-  duration    Int
+  duration    Int      @map("duration")
   status      String
   content     String
   present     Boolean?
+  /** ISO 8601 — resolução de conflitos ao sincronizar entre dispositivos */
+  updatedAt   String   @default("") @map("updatedAt")
 }
 
 model SchoolSettings {

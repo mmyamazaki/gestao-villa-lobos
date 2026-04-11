@@ -166,6 +166,8 @@ export interface ReplacementClass {
   status: ReplacementClassStatus
   content: string
   present?: boolean
+  /** ISO 8601 — controlo de merge ao sincronizar com o servidor */
+  updatedAt: string
 }
 
 export interface SchoolState {

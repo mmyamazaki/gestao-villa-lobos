@@ -1,5 +1,13 @@
 import { Prisma } from '@prisma/client'
-import type { Course, MensalidadeRegistrada, Student, Teacher } from '../src/domain/types.js'
+import type {
+  ClassSessionLog,
+  Course,
+  MensalidadeRegistrada,
+  ReplacementClass,
+  ReplacementClassStatus,
+  Student,
+  Teacher,
+} from '../src/domain/types.js'
 import type { ScheduleMap } from '../src/domain/types.js'
 
 export function courseToPrisma(c: Course): Prisma.CourseCreateInput {
@@ -266,5 +274,97 @@ export function mensalidadeFromPrisma(row: {
     manualFine: mf != null && !Number.isNaN(mf) ? mf : undefined,
     manualInterest: mi != null && !Number.isNaN(mi) ? mi : undefined,
     adjustmentNotes: row.adjustmentNotes?.trim() || undefined,
+  }
+}
+
+export function lessonLogToPrismaUnchecked(l: ClassSessionLog): Prisma.LessonLogUncheckedCreateInput {
+  return {
+    id: l.id,
+    teacherId: l.teacherId,
+    studentId: l.studentId,
+    lessonDate: l.lessonDate.slice(0, 10),
+    slotKey: l.slotKey,
+    present: Boolean(l.present),
+    content: typeof l.content === 'string' ? l.content : '',
+    updatedAt: typeof l.updatedAt === 'string' ? l.updatedAt : new Date().toISOString(),
+  }
+}
+
+export function lessonLogFromPrisma(row: {
+  id: string
+  teacherId: string
+  studentId: string
+  lessonDate: string
+  slotKey: string
+  present: boolean
+  content: string
+  updatedAt: string
+}): ClassSessionLog {
+  return {
+    id: row.id,
+    teacherId: row.teacherId,
+    studentId: row.studentId,
+    lessonDate: row.lessonDate.slice(0, 10),
+    slotKey: row.slotKey,
+    present: row.present,
+    content: row.content ?? '',
+    updatedAt: row.updatedAt,
+  }
+}
+
+function replacementStatusFromDb(s: string): ReplacementClassStatus {
+  if (s === 'realizada' || s === 'faltou') return s
+  return 'agendada'
+}
+
+export function replacementClassToPrismaUnchecked(
+  r: ReplacementClass,
+): Prisma.ReplacementClassUncheckedCreateInput {
+  return {
+    id: r.id,
+    studentId: r.studentId,
+    studentNome: typeof r.studentNome === 'string' ? r.studentNome : '',
+    teacherId: r.teacherId,
+    teacherNome: typeof r.teacherNome === 'string' ? r.teacherNome : '',
+    date: r.date.slice(0, 10),
+    startTime: typeof r.startTime === 'string' ? r.startTime.slice(0, 5) : '',
+    duration: r.duration === 60 ? 60 : 30,
+    status: replacementStatusFromDb(r.status),
+    content: typeof r.content === 'string' ? r.content : '',
+    present: typeof r.present === 'boolean' ? r.present : null,
+    updatedAt:
+      typeof r.updatedAt === 'string' && r.updatedAt.trim()
+        ? r.updatedAt
+        : new Date().toISOString(),
+  }
+}
+
+export function replacementClassFromPrisma(row: {
+  id: string
+  studentId: string
+  studentNome: string
+  teacherId: string
+  teacherNome: string
+  date: string
+  startTime: string
+  duration: number
+  status: string
+  content: string
+  present: boolean | null
+  updatedAt: string
+}): ReplacementClass {
+  return {
+    id: row.id,
+    studentId: row.studentId,
+    studentNome: row.studentNome ?? '',
+    teacherId: row.teacherId,
+    teacherNome: row.teacherNome ?? '',
+    date: row.date.slice(0, 10),
+    startTime: row.startTime.slice(0, 5),
+    duration: row.duration === 60 ? 60 : 30,
+    status: replacementStatusFromDb(row.status),
+    content: row.content ?? '',
+    present: row.present == null ? undefined : row.present,
+    updatedAt: row.updatedAt ?? '',
   }
 }

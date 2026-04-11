@@ -41,7 +41,21 @@ import {
   fetchMensalidadesRemoteBestEffort,
   pushMensalidadesToApi,
 } from '../utils/mensalidadesApi'
-import { ensureSchedule, mergeMensalidadesFromServer } from './schoolUtils'
+import {
+  fetchLessonLogsRemoteBestEffort,
+  pushLessonLogRemote,
+} from '../utils/lessonLogsApi'
+import {
+  fetchReplacementClassesRemoteBestEffort,
+  pushReplacementClassRemote,
+} from '../utils/replacementClassesApi'
+import {
+  ensureSchedule,
+  mergeLessonLogsFromServer,
+  mergeMensalidadesFromServer,
+  mergeReplacementClassesFromServer,
+  normalizeLessonLogs,
+} from './schoolUtils'
 
 /** Corpo do PUT /api/courses: sempre envia id, instrument, instrumentLabel, levelLabel e monthlyPrice. */
 function coursesPayloadForPut(courses: Course[]): Course[] {
@@ -146,6 +160,7 @@ function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
     status: r.status === 'realizada' || r.status === 'faltou' ? r.status : 'agendada',
     content: typeof r.content === 'string' ? r.content : '',
     present: typeof r.present === 'boolean' ? r.present : undefined,
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : '',
   }))
   const settings = raw?.settings ?? { observacoesInternas: '' }
   return reconcileTeacherSchedulesWithStudents({
@@ -157,26 +172,6 @@ function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
     replacementClasses,
     settings: { ...settings },
   })
-}
-
-function normalizeLessonLogs(students: Student[], logs: ClassSessionLog[]): ClassSessionLog[] {
-  const byComposite = new Map<string, ClassSessionLog>()
-  for (const l of logs) {
-    const st = students.find((s) => s.id === l.studentId)
-    const en = st?.enrollment
-    const slotKey = en
-      ? canonicalLessonLogSlotKey(en.lessonMode, en.slotKeys, l.slotKey)
-      : l.slotKey
-    const row = { ...l, slotKey }
-    const composite = `${row.teacherId}|${row.studentId}|${row.lessonDate}|${slotKey}`
-    const existing = byComposite.get(composite)
-    if (!existing || row.updatedAt > existing.updatedAt) {
-      byComposite.set(composite, { ...row, id: existing?.id ?? row.id })
-    } else {
-      byComposite.set(composite, { ...existing, slotKey })
-    }
-  }
-  return [...byComposite.values()]
 }
 
 function loadSecondaryPartial(): Partial<SchoolState> | null {
@@ -620,10 +615,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           const list = await fetchMensalidadesRemoteBestEffort()
           warnIfCoreWithoutStudentsButMensalidades(core, list)
+          const remoteLogs = await fetchLessonLogsRemoteBestEffort()
+          const remoteReplacements = await fetchReplacementClassesRemoteBestEffort()
           if (!cancelled) {
             setState((prev) => ({
               ...prev,
               mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+              lessonLogs: mergeLessonLogsFromServer(prev.students, prev.lessonLogs, remoteLogs),
+              replacementClasses: mergeReplacementClassesFromServer(
+                prev.replacementClasses,
+                remoteReplacements,
+              ),
             }))
           }
         }
@@ -637,10 +639,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             if (!cancelled) {
               const list = await fetchMensalidadesRemoteBestEffort()
               warnIfCoreWithoutStudentsButMensalidades(core, list)
+              const remoteLogs = await fetchLessonLogsRemoteBestEffort()
+              const remoteReplacements = await fetchReplacementClassesRemoteBestEffort()
               if (!cancelled) {
                 setState((prev) => ({
                   ...prev,
                   mensalidades: mergeMensalidadesFromServer(prev.mensalidades, list),
+                  lessonLogs: mergeLessonLogsFromServer(prev.students, prev.lessonLogs, remoteLogs),
+                  replacementClasses: mergeReplacementClassesFromServer(
+                    prev.replacementClasses,
+                    remoteReplacements,
+                  ),
                 }))
               }
             }
@@ -1038,6 +1047,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           id,
           updatedAt: new Date().toISOString(),
         }
+        void pushLessonLogRemote(row)
         return { ...prev, lessonLogs: [...filtered, row] }
       })
     },
@@ -1111,7 +1121,9 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           duration: payload.duration,
           status: 'agendada',
           content: '',
+          updatedAt: new Date().toISOString(),
         }
+        void pushReplacementClassRemote(row)
         return { ...prev, replacementClasses: [...prev.replacementClasses, row] }
       })
       return err ? { ok: false as const, message: err } : { ok: true as const }
@@ -1130,16 +1142,18 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         }
         return {
           ...prev,
-          replacementClasses: prev.replacementClasses.map((r) =>
-            r.id === payload.replacementClassId
-              ? {
-                  ...r,
-                  present: payload.present,
-                  content: payload.content.trim(),
-                  status: payload.present ? 'realizada' as const : 'faltou' as const,
-                }
-              : r,
-          ),
+          replacementClasses: prev.replacementClasses.map((r) => {
+            if (r.id !== payload.replacementClassId) return r
+            const next: ReplacementClass = {
+              ...r,
+              present: payload.present,
+              content: payload.content.trim(),
+              status: payload.present ? ('realizada' as const) : ('faltou' as const),
+              updatedAt: new Date().toISOString(),
+            }
+            void pushReplacementClassRemote(next)
+            return next
+          }),
         }
       })
       return err ? { ok: false as const, message: err } : { ok: true as const }
