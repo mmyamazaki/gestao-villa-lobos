@@ -78,21 +78,6 @@ if (NODE_ENV === 'production') {
 }
 
 /**
- * Porta HTTP: `PORT` (Railway, Render, etc.) → `API_PORT` (painel Hostinger / .env local) → 3000.
- * Ignorar `API_PORT` em produção quebrava hosts onde só esta variável está definida.
- */
-function resolveListenPort(): number {
-  const raw =
-    process.env.PORT?.trim() ||
-    process.env.API_PORT?.trim() ||
-    '3000'
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n < 1 || n > 65535) return 3000
-  return n
-}
-const port = resolveListenPort()
-
-/**
  * O painel (Hostinger, etc.) por vezes define `HOST` com o **domínio público** do site.
  * `app.listen(port, 'app.exemplo.com')` resolve para IP(s) externos; o reverse proxy local
  * liga a `127.0.0.1:PORT` → **503**. Só aceitamos `HOST` como bind se for endereço seguro;
@@ -154,7 +139,41 @@ function resolveListenHost(): string {
 
 const listenHost = resolveListenHost()
 
-/** LiteSpeed (Hostinger) pode mapear `listen(tcp)` para um socket Unix — `address()` devolve o path. */
+type ListenTarget =
+  | { type: 'tcp'; port: number; host: string }
+  | { type: 'unix'; path: string }
+
+/**
+ * Alguns painéis podem passar o caminho do socket Unix em `PORT` em vez de um número.
+ * Caso contrário: `PORT` (Railway, Render, etc.) → `API_PORT` (Hostinger / .env) → 3000.
+ */
+function looksLikeUnixSocketPath(raw: string): boolean {
+  const t = raw.trim()
+  if (t.length < 2) return false
+  return t.startsWith('/')
+}
+
+function resolveListenTarget(): ListenTarget {
+  const raw =
+    process.env.PORT?.trim() ||
+    process.env.API_PORT?.trim() ||
+    '3000'
+
+  if (looksLikeUnixSocketPath(raw)) {
+    return { type: 'unix', path: raw }
+  }
+
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 1 || n > 65535) {
+    console.warn(`[api] PORT/API_PORT inválido "${raw}" — a usar TCP 3000.`)
+    return { type: 'tcp', port: 3000, host: listenHost }
+  }
+  return { type: 'tcp', port: n, host: listenHost }
+}
+
+const listenTarget = resolveListenTarget()
+
+/** LiteSpeed (Hostinger) pode fazer `server.address()` devolver o path do socket Unix mesmo com bind TCP — não indica que PORT foi ignorado. */
 function unixSocketPathFromAddress(addr: string | import('node:net').AddressInfo | null): string | null {
   if (addr == null) return null
   if (typeof addr === 'string') return addr
@@ -1312,11 +1331,13 @@ async function connectPrismaWithRetries(): Promise<void> {
  */
 export async function start(): Promise<void> {
   console.log('BOOT', {
-    listenPort: port,
+    listen:
+      listenTarget.type === 'tcp'
+        ? { mode: 'tcp', port: listenTarget.port, host: listenTarget.host }
+        : { mode: 'unix', path: listenTarget.path },
     PORT: process.env.PORT ?? '(unset)',
     API_PORT: process.env.API_PORT ?? '(unset)',
     NODE_ENV,
-    host: listenHost,
     cwd: process.cwd(),
   })
 
@@ -1338,32 +1359,59 @@ export async function start(): Promise<void> {
    * Hostinger/LiteSpeed: listen() rápido; GET /api/health e /health não dependem do gate.
    */
   return new Promise((resolvePromise, reject) => {
-    const server = app.listen(port, listenHost, () => {
+    const onListening = () => {
       const addr = server.address()
-      console.log('[server] ouvindo na porta', port)
-      console.log('LISTENING', port, listenHost)
+      if (listenTarget.type === 'unix') {
+        console.log('[server] ouvindo em socket Unix', listenTarget.path)
+        console.log('LISTENING', 'unix', listenTarget.path)
+      } else {
+        console.log('[server] ouvindo na porta', listenTarget.port)
+        console.log('LISTENING', listenTarget.port, listenTarget.host)
+      }
       console.log('[api] socket.address() =', addr)
+      if (listenTarget.type === 'tcp' && typeof addr === 'string') {
+        console.log(
+          '[api] Nota: com bind TCP, o LiteSpeed pode ainda assim mostrar um path em address() — o proxy fala com este processo; não teste só 127.0.0.1:porta no SSH.',
+        )
+      }
       console.log(
-        `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → http://${listenHost}:${port}`,
+        listenTarget.type === 'unix'
+          ? `[api] NODE_ENV=${NODE_ENV} — bind em socket Unix (não é TCP localhost).`
+          : `[api] NODE_ENV=${NODE_ENV} process.env.PORT=${process.env.PORT ?? '(unset)'} → http://${listenTarget.host}:${listenTarget.port}`,
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
       }
       if (NODE_ENV === 'production') {
         const unixPath = unixSocketPathFromAddress(addr)
-        console.log(
-          unixPath != null
-            ? `[api] 503 no browser com app OK neste log? Verifique domínio → Node Web App no hPanel (LiteSpeed: socket Unix, não há serviço em TCP 127.0.0.1:${port}).`
-            : `[api] 503 no browser? hPanel: porta app = ${port}, domínio = esta Node app.`,
-        )
+        if (listenTarget.type === 'unix') {
+          console.log(
+            '[api] 503 no browser? Confirme no hPanel: domínio → esta Node Web App e o mesmo projecto que gera este socket.',
+          )
+        } else {
+          console.log(
+            unixPath != null
+              ? `[api] 503 com app OK neste log? Verifique domínio → Node Web App no hPanel (LiteSpeed pode mostrar socket em address(); bind TCP = ${listenTarget.port}).`
+              : `[api] 503 no browser? hPanel: porta app = ${listenTarget.port}, domínio = esta Node app.`,
+          )
+        }
       }
       resolvePromise()
-    })
+    }
+
+    const server =
+      listenTarget.type === 'unix'
+        ? app.listen(listenTarget.path, onListening)
+        : app.listen(listenTarget.port, listenTarget.host, onListening)
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
+        const where =
+          listenTarget.type === 'unix'
+            ? `Socket ${listenTarget.path}`
+            : `Porta ${listenTarget.port}`
         console.warn(
-          `[api] Porta ${port} já em uso — outra instância está a servir; esta cópia termina (código 0).`,
+          `[api] ${where} já em uso — outra instância está a servir; esta cópia termina (código 0).`,
         )
         releaseBootLockIfHeld()
         reject(err)
