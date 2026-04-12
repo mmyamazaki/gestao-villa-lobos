@@ -6,8 +6,6 @@
 import 'dotenv/config'
 
 import { existsSync, readFileSync, rmSync, statSync, unlinkSync } from 'node:fs'
-import http from 'node:http'
-import type { Server } from 'node:http'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -161,92 +159,6 @@ function unixSocketPathFromAddress(addr: string | import('node:net').AddressInfo
   if (addr == null) return null
   if (typeof addr === 'string') return addr
   return null
-}
-
-function probeUnixSocketHealth(socketPath: string): void {
-  const req = http.request(
-    {
-      socketPath: socketPath,
-      path: '/health',
-      method: 'GET',
-      timeout: 5000,
-      host: '127.0.0.1',
-    },
-    (res) => {
-      const chunks: Buffer[] = []
-      res.on('data', (c) => chunks.push(c))
-      res.on('end', () => {
-        const body = Buffer.concat(chunks).toString('utf8').trim().slice(0, 64)
-        console.log(
-          `[api] auto-teste unix:${socketPath} /health → HTTP ${res.statusCode}${body ? ` (${JSON.stringify(body)})` : ''}`,
-        )
-      })
-    },
-  )
-  req.on('error', (err) => {
-    console.warn(`[api] auto-teste unix socket → ${err.message}`)
-  })
-  req.on('timeout', () => {
-    req.destroy()
-    console.warn('[api] auto-teste unix socket → timeout')
-  })
-  req.end()
-}
-
-/** TCP loopback — só faz sentido quando o processo escuta mesmo em TCP (não LiteSpeed socket). */
-function probeLoopbackHealth(listenPort: number): void {
-  if (NODE_ENV !== 'production') return
-
-  const run = (hostname: string, family: 4 | 6) => {
-    const req = http.request(
-      {
-        hostname,
-        port: listenPort,
-        path: '/health',
-        method: 'GET',
-        timeout: 5000,
-        family,
-      },
-      (res) => {
-        const chunks: Buffer[] = []
-        res.on('data', (c) => chunks.push(c))
-        res.on('end', () => {
-          const body = Buffer.concat(chunks).toString('utf8').trim().slice(0, 64)
-          console.log(
-            `[api] auto-teste ${hostname}:${listenPort}/health → HTTP ${res.statusCode}${body ? ` (${JSON.stringify(body)})` : ''}`,
-          )
-        })
-      },
-    )
-    req.on('error', (err) => {
-      console.warn(`[api] auto-teste ${hostname}:${listenPort}/health → ${err.message}`)
-    })
-    req.on('timeout', () => {
-      req.destroy()
-      console.warn(`[api] auto-teste ${hostname}:${listenPort}/health → timeout`)
-    })
-    req.end()
-  }
-
-  run('127.0.0.1', 4)
-  run('::1', 6)
-}
-
-function probeHealthFromServer(server: Server, tcpPortForLog: number): void {
-  if (NODE_ENV !== 'production') return
-  setImmediate(() => {
-    const path = unixSocketPathFromAddress(server.address())
-    if (path) {
-      console.log(
-        '[api] LiteSpeed/Hostinger: pedido HTTP entra por socket Unix (não por TCP 127.0.0.1:' +
-          String(tcpPortForLog) +
-          '). ECONNREFUSED em :3000 nos logs antigos era falso positivo.',
-      )
-      probeUnixSocketHealth(path)
-      return
-    }
-    probeLoopbackHealth(tcpPortForLog)
-  })
 }
 
 /**
@@ -1429,7 +1341,6 @@ export async function start(): Promise<void> {
             ? `[api] 503 no browser com app OK neste log? Verifique domínio → Node Web App no hPanel (LiteSpeed: socket Unix, não há serviço em TCP 127.0.0.1:${port}).`
             : `[api] 503 no browser? hPanel: porta app = ${port}, domínio = esta Node app.`,
         )
-        probeHealthFromServer(server, port)
       }
       resolvePromise()
     })
