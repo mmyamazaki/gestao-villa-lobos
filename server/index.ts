@@ -237,6 +237,11 @@ function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
     next()
     return
   }
+  /** Preflight CORS não usa Prisma; não bloquear à espera de $connect(). */
+  if (req.method === 'OPTIONS') {
+    next()
+    return
+  }
   const p = req.path
   if (!p.startsWith('/api')) {
     next()
