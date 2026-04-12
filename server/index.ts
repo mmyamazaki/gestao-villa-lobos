@@ -5,7 +5,7 @@
  */
 import 'dotenv/config'
 
-import { existsSync, readFileSync, rmSync, statSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -1228,9 +1228,19 @@ if (existsSync(distDir)) {
 /** Igual a `scripts/singleton-lock.mjs` — libertar se este processo morrer antes do listen. */
 const BOOT_LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
 
+function bootLockPath(): string {
+  let base = process.cwd()
+  try {
+    base = realpathSync(process.cwd())
+  } catch {
+    /* cwd inválido — usar cwd bruto */
+  }
+  return join(base, BOOT_LOCK_BASENAME)
+}
+
 function releaseBootLockIfHeld() {
   try {
-    const p = join(process.cwd(), BOOT_LOCK_BASENAME)
+    const p = bootLockPath()
     const pidFile = join(p, 'pid')
     if (!existsSync(p)) return
     const st = statSync(p)

@@ -10,6 +10,7 @@
 import {
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -19,11 +20,13 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
+/** Em produção nunca arrancar sem lock — dois `listen` no LiteSpeed → 503 intermitente. */
+const STRICT_LOCK = process.env.NODE_ENV === 'production'
 const PID_FILENAME = 'pid'
 /** Conteúdo completo: só dígitos + newline */
 const LOCK_BODY = /^\d+\n$/
 
-const MAX_ATTEMPTS = 80
+const MAX_ATTEMPTS = 120
 const EMPTY_PID_UNLINK_AFTER = 35
 
 /** true = há processo real (não zombie) com este pid */
@@ -55,8 +58,16 @@ function readPidFromFile(pidPath) {
   }
 }
 
+function resolveLockBaseDir() {
+  try {
+    return realpathSync(process.cwd())
+  } catch {
+    return process.cwd()
+  }
+}
+
 export async function acquireSingletonLock() {
-  const lockPath = join(process.cwd(), LOCK_BASENAME)
+  const lockPath = join(resolveLockBaseDir(), LOCK_BASENAME)
   const pidFile = join(lockPath, PID_FILENAME)
   let emptyPidReads = 0
 
@@ -139,6 +150,10 @@ export async function acquireSingletonLock() {
           continue
         }
         console.error('[boot] aviso: lock mkdir:', e)
+        if (STRICT_LOCK) {
+          console.error('[boot] produção: sem lock não é seguro; a encerrar.')
+          return false
+        }
         return true
       }
 
@@ -160,14 +175,21 @@ export async function acquireSingletonLock() {
           continue
         }
         console.error('[boot] aviso: lock pid file:', e)
+        if (STRICT_LOCK) {
+          console.error('[boot] produção: sem lock não é seguro; a encerrar.')
+          return false
+        }
         return true
       }
     }
 
-    console.error('[boot] aviso: não foi possível obter lock; a continuar sem lock.')
-    return true
+    console.error(
+      `[boot] não foi possível obter lock após ${MAX_ATTEMPTS} tentativas.` +
+        (STRICT_LOCK ? ' Produção: a encerrar (evita dois LISTENING → 503).' : ' Dev: a continuar sem lock.'),
+    )
+    return STRICT_LOCK ? false : true
   } catch (e) {
-    console.error('[boot] aviso: lock de instância única indisponível:', e)
-    return true
+    console.error('[boot] lock de instância única indisponível:', e)
+    return STRICT_LOCK ? false : true
   }
 }
