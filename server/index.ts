@@ -18,6 +18,7 @@ import type {
   Course,
   MensalidadeRegistrada,
   ReplacementClass,
+  SchoolSettings,
   Student,
   Teacher,
 } from '../src/domain/types.js'
@@ -51,6 +52,8 @@ import {
 } from './provisionalAdminAuth.js'
 
 const MIN_ADMIN_PASSWORD_LEN = 8
+
+const SCHOOL_SETTINGS_ROW_ID = 'default'
 
 function adminSessionEmailOrNull(req: Request): string | null {
   const token = readCookie(req.headers.cookie, ADMIN_SESSION_COOKIE)
@@ -679,6 +682,37 @@ app.get('/api/school/core', async (_req: Request, res: Response) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: e instanceof Error ? e.message : 'Erro no servidor' })
+  }
+})
+
+app.get('/api/school/settings', async (_req: Request, res: Response) => {
+  try {
+    const row = await prisma.schoolSettings.findUnique({ where: { id: SCHOOL_SETTINGS_ROW_ID } })
+    const payload: SchoolSettings = {
+      observacoesInternas: row?.observacoesInternas ?? '',
+    }
+    res.json(payload)
+  } catch (e) {
+    console.error('[api/school/settings GET]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro no servidor' })
+  }
+})
+
+app.put('/api/school/settings', async (req: Request, res: Response) => {
+  try {
+    const raw = req.body as { observacoesInternas?: unknown }
+    const observacoesInternas =
+      typeof raw?.observacoesInternas === 'string' ? raw.observacoesInternas : ''
+    await prisma.schoolSettings.upsert({
+      where: { id: SCHOOL_SETTINGS_ROW_ID },
+      create: { id: SCHOOL_SETTINGS_ROW_ID, observacoesInternas },
+      update: { observacoesInternas },
+    })
+    const settings: SchoolSettings = { observacoesInternas }
+    res.json({ ok: true, settings })
+  } catch (e) {
+    console.error('[api/school/settings PUT]', e)
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Erro ao salvar configurações.' })
   }
 })
 

@@ -2,6 +2,7 @@
 // Parcelas: persistidas na tabela Mensalidade (API PUT ao salvar matrícula e ao registrar pagamento).
 // Registos de aula (LessonLog): sincronizados via API PUT/GET /api/lesson-logs (+ Supabase opcional).
 // Reposições (ReplacementClass): sincronizadas via API /api/replacement-classes (+ Supabase opcional).
+// SchoolSettings: GET/PUT /api/school/settings.
 
 generator client {
   provider = "prisma-client-js"
@@ -113,6 +114,7 @@ model ReplacementClass {
   updatedAt   String   @default("") @map("updatedAt")
 }
 
+/** Observações internas da secretaria — GET/PUT `/api/school/settings` (sincroniza entre dispositivos). */
 model SchoolSettings {
   id                  String @id @default("default")
   observacoesInternas String @default("")

@@ -50,6 +50,10 @@ import {
   pushReplacementClassRemote,
 } from '../utils/replacementClassesApi'
 import {
+  fetchSchoolSettingsRemoteBestEffort,
+  pushSchoolSettingsToApi,
+} from '../utils/schoolSettingsApi'
+import {
   ensureSchedule,
   mergeLessonLogsFromServer,
   mergeMensalidadesFromServer,
@@ -463,7 +467,8 @@ export type SchoolContextValue = {
   deleteCourse: (instrument: string) => Promise<void>
   /** Atualiza o nome exibido (instrumentLabel) em todos os níveis do mesmo instrumento. */
   updateInstrumentLabel: (instrument: string, newLabel: string) => Promise<void>
-  saveSettings: (settings: SchoolSettings) => void
+  /** Persiste em Postgres (`SchoolSettings`) e estado local. */
+  saveSettings: (settings: SchoolSettings) => Promise<void>
   saveTeacher: (draft: Teacher) => Promise<void>
   /** Exclui o professor no servidor e desvincula alunos (curso mantido; professor e horários a redistribuir). */
   deleteTeacher: (teacherId: string) => Promise<void>
@@ -613,10 +618,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         applyCore(core)
 
         if (!cancelled) {
-          const list = await fetchMensalidadesRemoteBestEffort()
+          const [list, remoteLogs, remoteReplacements, remoteSettings] = await Promise.all([
+            fetchMensalidadesRemoteBestEffort(),
+            fetchLessonLogsRemoteBestEffort(),
+            fetchReplacementClassesRemoteBestEffort(),
+            fetchSchoolSettingsRemoteBestEffort(),
+          ])
           warnIfCoreWithoutStudentsButMensalidades(core, list)
-          const remoteLogs = await fetchLessonLogsRemoteBestEffort()
-          const remoteReplacements = await fetchReplacementClassesRemoteBestEffort()
           if (!cancelled) {
             setState((prev) => ({
               ...prev,
@@ -626,6 +634,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
                 prev.replacementClasses,
                 remoteReplacements,
               ),
+              ...(remoteSettings ? { settings: remoteSettings } : {}),
             }))
           }
         }
@@ -637,10 +646,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             const core = await fetchSchoolCoreFromSupabase()
             applyCore(core)
             if (!cancelled) {
-              const list = await fetchMensalidadesRemoteBestEffort()
+              const [list, remoteLogs, remoteReplacements, remoteSettings] = await Promise.all([
+                fetchMensalidadesRemoteBestEffort(),
+                fetchLessonLogsRemoteBestEffort(),
+                fetchReplacementClassesRemoteBestEffort(),
+                fetchSchoolSettingsRemoteBestEffort(),
+              ])
               warnIfCoreWithoutStudentsButMensalidades(core, list)
-              const remoteLogs = await fetchLessonLogsRemoteBestEffort()
-              const remoteReplacements = await fetchReplacementClassesRemoteBestEffort()
               if (!cancelled) {
                 setState((prev) => ({
                   ...prev,
@@ -650,6 +662,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
                     prev.replacementClasses,
                     remoteReplacements,
                   ),
+                  ...(remoteSettings ? { settings: remoteSettings } : {}),
                 }))
               }
             }
@@ -826,7 +839,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, courses: next.map((c) => ({ ...c })) }))
   }, [])
 
-  const saveSettings = useCallback((settings: SchoolSettings) => {
+  const saveSettings = useCallback(async (settings: SchoolSettings) => {
+    await pushSchoolSettingsToApi(settings)
     setState((prev) => ({ ...prev, settings: { ...settings } }))
   }, [])
 
