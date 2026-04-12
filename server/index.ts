@@ -68,11 +68,17 @@ function primaryAdminEmailLowerServer(): string | null {
 const app = express()
 
 /**
- * Resolvida quando `connectPrismaWithRetries()` conclui com sucesso.
- * Sem isto, pedidos HTTP a /api/school/core, /api/mensalidades, etc. correm em paralelo com
- * $connect() e o engine entra em PANIC ("timer has gone away") — típico na Hostinger.
+ * Promise que **sempre resolve** (nunca rejeita): `start()` termina após `listen()` e não pode
+ * deixar `connectPrismaWithRetries()` rejeitar sem handler — isso gerava `unhandledRejection`
+ * e `PromiseRejectionHandledWarning` nos logs da Hostinger.
  */
 let prismaBootstrapPromise: Promise<void> | null = null
+
+type PrismaConnectionState = 'connecting' | 'ready' | 'failed'
+let prismaConnectionState: PrismaConnectionState = 'connecting'
+let prismaConnectionError: Error | null = null
+/** Evita uma linha de erro por cada pedido HTTP quando a base falhou no arranque. */
+let prismaGateFailureLogged = false
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
 
@@ -278,16 +284,22 @@ function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
     res.status(503).json({ error: 'Servidor a iniciar.' })
     return
   }
-  void boot
-    .then(() => {
-      next()
-    })
-    .catch((err: unknown) => {
-      console.error('[api] prismaReadyGate: base indisponível', err)
+  void boot.then(() => {
+    if (prismaConnectionState === 'failed') {
+      if (!prismaGateFailureLogged) {
+        prismaGateFailureLogged = true
+        console.error(
+          '[api] prismaReadyGate: API bloqueada (base indisponível no arranque).',
+          prismaConnectionError?.message ?? prismaConnectionError,
+        )
+      }
       if (!res.headersSent) {
         res.status(503).json({ error: 'Base de dados indisponível. Tente dentro de instantes.' })
       }
-    })
+      return
+    }
+    next()
+  })
 }
 
 app.use(prismaReadyGate)
@@ -1322,7 +1334,8 @@ function sleep(ms: number) {
  */
 async function connectPrismaWithRetries(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
-    const jitter = 150 + Math.floor(Math.random() * 2200)
+    /** Até ~4,2s — reduz PANIC por dois processos a fazer $connect() em sobreposição (Hostinger). */
+    const jitter = 200 + Math.floor(Math.random() * 4000)
     console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques paralelos).`)
     await sleep(jitter)
   }
@@ -1381,11 +1394,26 @@ export async function start(): Promise<void> {
    * Isto evita PANIC "timer has gone away" por vários findMany em paralelo com $connect().
    */
   if (process.env.DATABASE_URL?.trim()) {
-    prismaBootstrapPromise = connectPrismaWithRetries().catch((e) => {
-      console.error('[api] Prisma: ligação ao Postgres falhou após retentativas.', e)
-      throw e
+    prismaConnectionState = 'connecting'
+    prismaConnectionError = null
+    prismaGateFailureLogged = false
+    prismaBootstrapPromise = new Promise<void>((resolve) => {
+      void connectPrismaWithRetries().then(
+        () => {
+          prismaConnectionState = 'ready'
+          prismaConnectionError = null
+          resolve()
+        },
+        (e: unknown) => {
+          prismaConnectionState = 'failed'
+          prismaConnectionError = e instanceof Error ? e : new Error(String(e))
+          console.error('[api] Prisma: ligação ao Postgres falhou após retentativas.', prismaConnectionError)
+          resolve()
+        },
+      )
     })
   } else {
+    prismaConnectionState = 'ready'
     prismaBootstrapPromise = Promise.resolve()
   }
 
