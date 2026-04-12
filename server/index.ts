@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import bcrypt from 'bcryptjs'
 import cors from 'cors'
-import express, { type Request, type Response } from 'express'
+import express, { type NextFunction, type Request, type Response } from 'express'
 import { Prisma } from '@prisma/client'
 import type {
   ClassSessionLog,
@@ -65,6 +65,13 @@ function primaryAdminEmailLowerServer(): string | null {
 }
 
 const app = express()
+
+/**
+ * Resolvida quando `connectPrismaWithRetries()` conclui com sucesso.
+ * Sem isto, pedidos HTTP a /api/school/core, /api/mensalidades, etc. correm em paralelo com
+ * $connect() e o engine entra em PANIC ("timer has gone away") — típico na Hostinger.
+ */
+let prismaBootstrapPromise: Promise<void> | null = null
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development'
 
@@ -308,6 +315,43 @@ app.use(
   }),
 )
 app.use(express.json({ limit: '20mb' }))
+
+/**
+ * Bloqueia rotas que usam Prisma até o engine estar ligado (uma única sequência de $connect).
+ * `/api/health` (sem DB) continua imediato para o proxy LiteSpeed.
+ */
+function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
+  if (!process.env.DATABASE_URL?.trim()) {
+    next()
+    return
+  }
+  const p = req.path
+  if (!p.startsWith('/api')) {
+    next()
+    return
+  }
+  if (p === '/api/health') {
+    next()
+    return
+  }
+  const boot = prismaBootstrapPromise
+  if (!boot) {
+    res.status(503).json({ error: 'Servidor a iniciar.' })
+    return
+  }
+  void boot
+    .then(() => {
+      next()
+    })
+    .catch((err: unknown) => {
+      console.error('[api] prismaReadyGate: base indisponível', err)
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'Base de dados indisponível. Tente dentro de instantes.' })
+      }
+    })
+}
+
+app.use(prismaReadyGate)
 
 /** Diagnóstico proxy Hostinger/Kodee: https://domínio/health (texto plano, sem /api). */
 app.get('/health', (_req: Request, res: Response) => {
@@ -1329,10 +1373,10 @@ async function connectPrismaWithRetries(): Promise<void> {
       }
       console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
       releaseBootLockIfHeld()
-      // Não fazer process.exit: o HTTP já está a ouvir; rotas que usam Prisma falham até haver ligação.
-      // Isto evita 503 no proxy (LiteSpeed) enquanto o engine retenta ou o utilizador corrige a URL.
+      throw e instanceof Error ? e : new Error(String(e))
     }
   }
+  throw new Error('Prisma: ligação falhou após retentativas')
 }
 
 /**
@@ -1350,9 +1394,21 @@ export async function start(): Promise<void> {
   })
 
   /**
-   * Hostinger/LiteSpeed: o proxy falha com 503 se o Node ainda não aceita ligações HTTP.
-   * Antigamente: await Prisma $connect (vários segundos com PANIC/retry) **antes** de listen() → janela de 503.
-   * Agora: listen() primeiro; Prisma liga em background (GET /api/health e ficheiros estáticos respondem já).
+   * Ligar Prisma **antes** de aceitar tráfego que usa Prisma, mas sem bloquear `listen()`:
+   * a promise arranca já; `prismaReadyGate` espera por esta promise nas rotas `/api/*` (exceto /api/health).
+   * Isto evita PANIC "timer has gone away" por vários findMany em paralelo com $connect().
+   */
+  if (process.env.DATABASE_URL?.trim()) {
+    prismaBootstrapPromise = connectPrismaWithRetries().catch((e) => {
+      console.error('[api] Prisma: ligação ao Postgres falhou após retentativas.', e)
+      throw e
+    })
+  } else {
+    prismaBootstrapPromise = Promise.resolve()
+  }
+
+  /**
+   * Hostinger/LiteSpeed: listen() rápido; GET /api/health e /health não dependem do gate.
    */
   return new Promise((resolvePromise, reject) => {
     const server = app.listen(port, listenHost, () => {
@@ -1365,11 +1421,6 @@ export async function start(): Promise<void> {
       )
       if (existsSync(join(distDir, 'index.html'))) {
         console.log(`[api] servindo frontend estático de ${distDir}`)
-      }
-      if (process.env.DATABASE_URL?.trim()) {
-        void connectPrismaWithRetries().catch((e) => {
-          console.error('[api] Prisma: ligação em background não concluída (HTTP continua ativo).', e)
-        })
       }
       if (NODE_ENV === 'production') {
         const unixPath = unixSocketPathFromAddress(addr)
