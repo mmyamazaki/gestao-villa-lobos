@@ -1,35 +1,33 @@
 /**
- * Uma única instância Node a fazer listen (Hostinger dispara vários arranques).
+ * Uma única instância Node a fazer `listen` (Hostinger dispara vários arranques em paralelo).
  *
- * Lock em **diretório** (`mkdir`): atómico no POSIX; evita corrida do lock em ficheiro
- * (outro processo via `EEXIST` + ficheiro vazio → dois `LISTENING` → 503).
- *
- * Migração: se existir o lock **legado** (ficheiro com o mesmo nome), respeita-se o PID
- * até o processo morrer; depois o caminho passa a ser pasta.
+ * Lock **atómico**: `openSync(caminho, 'wx')` — no POSIX só um processo cria o ficheiro.
+ * O lock antigo (pasta + `pid`) deixava janelas em que vários processos chegavam a `LISTENING`
+ * → LiteSpeed aproximava-se do socket errado → **503**.
  */
 import {
-  mkdirSync,
+  closeSync,
+  existsSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
   statSync,
   unlinkSync,
-  writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-const LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
-/** Em produção nunca arrancar sem lock — dois `listen` no LiteSpeed → 503 intermitente. */
+/** Nome do ficheiro de lock (sincronizar com `server/index.ts` → BOOT_LOCK_FILENAME). */
+const LOCK_FILENAME = '.gestao-villa-lobos.run.lock'
+
+/** Pasta legada (mkdir + pid); removida se o PID já não existir. */
+const LEGACY_LOCK_DIR = 'gestao-villa-lobos.node.lock'
+
 const STRICT_LOCK = process.env.NODE_ENV === 'production'
-const PID_FILENAME = 'pid'
-/** Conteúdo completo: só dígitos + newline */
-const LOCK_BODY = /^\d+\n$/
+const MAX_ATTEMPTS = 100
 
-const MAX_ATTEMPTS = 120
-const EMPTY_PID_UNLINK_AFTER = 35
-
-/** true = há processo real (não zombie) com este pid */
 function pidIsLiveNonZombie(pid) {
   try {
     process.kill(pid, 0)
@@ -50,14 +48,6 @@ function pidIsLiveNonZombie(pid) {
   return true
 }
 
-function readPidFromFile(pidPath) {
-  try {
-    return readFileSync(pidPath, 'utf8')
-  } catch {
-    return null
-  }
-}
-
 function resolveLockBaseDir() {
   try {
     return realpathSync(process.cwd())
@@ -66,130 +56,76 @@ function resolveLockBaseDir() {
   }
 }
 
-export async function acquireSingletonLock() {
-  const lockPath = join(resolveLockBaseDir(), LOCK_BASENAME)
-  const pidFile = join(lockPath, PID_FILENAME)
-  let emptyPidReads = 0
-
+/** Liberta lock em diretório antigo para não competir com o ficheiro novo. */
+function cleanupLegacyDirLock(baseDir) {
+  const p = join(baseDir, LEGACY_LOCK_DIR)
   try {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      let st = null
+    if (!existsSync(p)) return
+    const st = statSync(p)
+    if (!st.isDirectory()) return
+    const pidPath = join(p, 'pid')
+    const raw = existsSync(pidPath) ? readFileSync(pidPath, 'utf8') : ''
+    const pid = parseInt(raw.trim(), 10)
+    if (Number.isFinite(pid) && pid > 0 && pidIsLiveNonZombie(pid)) return
+    rmSync(p, { recursive: true, force: true })
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function acquireSingletonLock() {
+  const base = resolveLockBaseDir()
+  cleanupLegacyDirLock(base)
+
+  const lockFile = join(base, LOCK_FILENAME)
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const fd = openSync(lockFile, 'wx', 0o644)
       try {
-        st = statSync(lockPath)
+        writeSync(fd, Buffer.from(`${process.pid}\n`, 'utf8'))
+      } finally {
+        closeSync(fd)
+      }
+      return true
+    } catch (e) {
+      if (e?.code !== 'EEXIST') {
+        console.error('[boot] lock open (wx):', e)
+        return STRICT_LOCK ? false : true
+      }
+
+      let ownerPid = null
+      let canRead = false
+      try {
+        const raw = readFileSync(lockFile, 'utf8').trim()
+        const pid = parseInt(raw, 10)
+        if (Number.isFinite(pid) && pid > 0) {
+          ownerPid = pid
+          canRead = true
+        }
       } catch {
-        st = null
+        canRead = false
       }
 
-      /* --- Lock legado: ficheiro plano (versões antigas) --- */
-      if (st?.isFile()) {
-        const raw = readFileSync(lockPath, 'utf8')
-        if (LOCK_BODY.test(raw)) {
-          const pid = parseInt(raw.trim(), 10)
-          if (Number.isFinite(pid) && pid > 0 && pidIsLiveNonZombie(pid)) {
-            console.log(
-              `[boot] instância Node já em execução (pid ${pid}); esta cópia encerra para evitar vários listen e 2× Prisma.`,
-            )
-            return false
-          }
-        }
-        try {
-          unlinkSync(lockPath)
-        } catch {
-          /* outro processo alterou */
-        }
-        await sleep(20 + Math.floor(Math.random() * 40))
-        continue
-      }
-
-      /* --- Lock novo: diretório --- */
-      if (st?.isDirectory()) {
-        const raw = readPidFromFile(pidFile)
-        if (raw === null) {
-          emptyPidReads++
-          if (emptyPidReads >= EMPTY_PID_UNLINK_AFTER) {
-            try {
-              rmSync(lockPath, { recursive: true, force: true })
-            } catch {
-              /* ignore */
-            }
-            emptyPidReads = 0
-          }
-          await sleep(25 + Math.floor(Math.random() * 55))
-          continue
-        }
-
-        if (!LOCK_BODY.test(raw)) {
-          emptyPidReads = 0
-          await sleep(25 + Math.floor(Math.random() * 55))
-          continue
-        }
-
-        emptyPidReads = 0
-        const pid = parseInt(raw.trim(), 10)
-        if (!Number.isFinite(pid) || pid <= 0 || !pidIsLiveNonZombie(pid)) {
-          try {
-            rmSync(lockPath, { recursive: true, force: true })
-          } catch {
-            /* ignore */
-          }
-          continue
-        }
-
+      if (canRead && ownerPid != null && pidIsLiveNonZombie(ownerPid)) {
         console.log(
-          `[boot] instância Node já em execução (pid ${pid}); esta cópia encerra para evitar vários listen e 2× Prisma.`,
+          `[boot] instância Node já em execução (pid ${ownerPid}); esta cópia encerra para evitar vários listen e 2× Prisma.`,
         )
         return false
       }
 
-      /* --- Criar diretório de lock (atómico) --- */
       try {
-        mkdirSync(lockPath)
-      } catch (e) {
-        if (e?.code === 'EEXIST') {
-          await sleep(25 + Math.floor(Math.random() * 55))
-          continue
-        }
-        console.error('[boot] aviso: lock mkdir:', e)
-        if (STRICT_LOCK) {
-          console.error('[boot] produção: sem lock não é seguro; a encerrar.')
-          return false
-        }
-        return true
+        unlinkSync(lockFile)
+      } catch {
+        /* outro processo alterou */
       }
-
-      try {
-        writeFileSync(pidFile, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' })
-        /**
-         * Não libertar lock em SIGTERM: redeploy com processo antigo a escutar + novo com lock
-         * causava dois LISTENING. O lock só deixa de valer quando o PID morre.
-         */
-        return true
-      } catch (e) {
-        try {
-          rmSync(lockPath, { recursive: true, force: true })
-        } catch {
-          /* ignore */
-        }
-        if (e?.code === 'EEXIST') {
-          await sleep(25 + Math.floor(Math.random() * 55))
-          continue
-        }
-        console.error('[boot] aviso: lock pid file:', e)
-        if (STRICT_LOCK) {
-          console.error('[boot] produção: sem lock não é seguro; a encerrar.')
-          return false
-        }
-        return true
-      }
+      await sleep(12 + Math.floor(Math.random() * 40))
     }
-
-    console.error(
-      `[boot] não foi possível obter lock após ${MAX_ATTEMPTS} tentativas.` +
-        (STRICT_LOCK ? ' Produção: a encerrar (evita dois LISTENING → 503).' : ' Dev: a continuar sem lock.'),
-    )
-    return STRICT_LOCK ? false : true
-  } catch (e) {
-    console.error('[boot] lock de instância única indisponível:', e)
-    return STRICT_LOCK ? false : true
   }
+
+  console.error(
+    `[boot] não foi possível obter lock após ${MAX_ATTEMPTS} tentativas.` +
+      (STRICT_LOCK ? ' Produção: a encerrar (evita dois LISTENING → 503).' : ' Dev: a continuar sem lock.'),
+  )
+  return STRICT_LOCK ? false : true
 }

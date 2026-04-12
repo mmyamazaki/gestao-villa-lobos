@@ -30,3 +30,4 @@ dist-ssr
 
 # Lock de instância única em produção (gerado em runtime)
 gestao-villa-lobos.node.lock
+.gestao-villa-lobos.run.lock

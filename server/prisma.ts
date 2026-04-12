@@ -53,10 +53,6 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
     if (pooler || directDb) {
       if (!params.has('sslmode')) params.set('sslmode', 'require')
       if (!params.has('connect_timeout')) params.set('connect_timeout', '60')
-      /** Uma ligação por cliente — menos pressão no Postgres quando o painel arranca vários Node em paralelo. */
-      if (directDb && port === '5432' && !params.has('connection_limit')) {
-        params.set('connection_limit', '1')
-      }
     }
 
     if (pooler) {
@@ -125,6 +121,5 @@ export async function replacePrismaClientAfterEnginePanic(): Promise<void> {
   } catch {
     /* ignore */
   }
-  await new Promise<void>((r) => setTimeout(r, 200))
   prismaInstance = createPrismaClient()
 }

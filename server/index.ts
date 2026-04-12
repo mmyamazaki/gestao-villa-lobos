@@ -1290,34 +1290,31 @@ if (existsSync(distDir)) {
   console.warn(`[api] AVISO: dist não encontrada (${distDir}) — só API ou cwd errado.`)
 }
 
-/** Igual a `scripts/singleton-lock.mjs` — libertar se este processo morrer antes do listen. */
-const BOOT_LOCK_BASENAME = 'gestao-villa-lobos.node.lock'
-
-function bootLockPath(): string {
-  let base = process.cwd()
-  try {
-    base = realpathSync(process.cwd())
-  } catch {
-    /* cwd inválido — usar cwd bruto */
-  }
-  return join(base, BOOT_LOCK_BASENAME)
-}
+/** Igual a `scripts/singleton-lock.mjs` (ficheiro `.gestao-villa-lobos.run.lock`). */
+const BOOT_LOCK_FILENAME = '.gestao-villa-lobos.run.lock'
+const LEGACY_LOCK_DIR = 'gestao-villa-lobos.node.lock'
 
 function releaseBootLockIfHeld() {
   try {
-    const p = bootLockPath()
-    const pidFile = join(p, 'pid')
-    if (!existsSync(p)) return
-    const st = statSync(p)
-    if (st.isDirectory()) {
-      if (!existsSync(pidFile)) return
-      if (readFileSync(pidFile, 'utf8').trim() === String(process.pid)) {
-        rmSync(p, { recursive: true, force: true })
-      }
-      return
+    let base = process.cwd()
+    try {
+      base = realpathSync(process.cwd())
+    } catch {
+      /* cwd inválido */
     }
-    if (st.isFile() && readFileSync(p, 'utf8').trim() === String(process.pid)) {
-      unlinkSync(p)
+    const lockFile = join(base, BOOT_LOCK_FILENAME)
+    if (existsSync(lockFile)) {
+      const st = statSync(lockFile)
+      if (st.isFile() && readFileSync(lockFile, 'utf8').trim() === String(process.pid)) {
+        unlinkSync(lockFile)
+      }
+    }
+    const legacyDir = join(base, LEGACY_LOCK_DIR)
+    if (existsSync(legacyDir) && statSync(legacyDir).isDirectory()) {
+      const pidFile = join(legacyDir, 'pid')
+      if (existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim() === String(process.pid)) {
+        rmSync(legacyDir, { recursive: true, force: true })
+      }
     }
   } catch {
     /* ignore */
