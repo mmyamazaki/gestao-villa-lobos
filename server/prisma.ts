@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 
+import { sanitizeDatabaseUrlFromPanel } from './sanitizeDatabaseUrl.js'
+
 /**
  * Manter em sincronia com `scripts/lib/normalize-database-url.mjs`.
  *
@@ -70,8 +72,13 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
   }
 }
 
-const raw = process.env.DATABASE_URL?.trim()
+const rawEnv = process.env.DATABASE_URL?.trim() ?? ''
+const raw = rawEnv ? sanitizeDatabaseUrlFromPanel(rawEnv) : ''
 const prismaUrl = raw ? normalizeDatabaseUrlForPrisma(raw) : undefined
+
+if (rawEnv && raw !== rawEnv) {
+  console.warn('[api] DATABASE_URL: removido aspas/BOM extra do valor do painel (formato comum no hPanel).')
+}
 
 if (prismaUrl && raw && prismaUrl !== raw) {
   const port6543 = /:6543(\/|\?|#|$)/.test(raw)
@@ -101,7 +108,7 @@ let prismaInstance = createPrismaClient()
  * quem importou `prisma` continua a usar o mesmo objeto exportado.
  */
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop, _receiver) {
+  get(_target, prop) {
     const v = (prismaInstance as unknown as Record<string | symbol, unknown>)[prop]
     if (typeof v === 'function') {
       return (v as (...args: unknown[]) => unknown).bind(prismaInstance)

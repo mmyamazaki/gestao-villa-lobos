@@ -23,6 +23,7 @@ import type {
   Teacher,
 } from '../src/domain/types.js'
 import { prisma, replacePrismaClientAfterEnginePanic } from './prisma.js'
+import { sanitizeDatabaseUrlFromPanel } from './sanitizeDatabaseUrl.js'
 import {
   courseFromPrisma,
   courseToPrisma,
@@ -1344,13 +1345,26 @@ function sleep(ms: number) {
 
 /** Confirma que o painel injectou um URL válido (sem expor password). */
 function logDatabaseUrlTargetSummary(): void {
-  const raw = process.env.DATABASE_URL?.trim()
-  if (!raw) {
+  const rawEnv = process.env.DATABASE_URL?.trim()
+  if (!rawEnv) {
     console.warn('[api] DATABASE_URL ausente — Prisma não liga ao Postgres.')
     return
   }
+  const raw = sanitizeDatabaseUrlFromPanel(rawEnv)
+  if (raw !== rawEnv) {
+    console.warn('[api] DATABASE_URL: removidas aspas/BOM à volta do valor (comum no hPanel).')
+  }
+  if (!/^postgres(?:ql)?:\/\//i.test(raw)) {
+    console.warn(
+      '[api] DATABASE_URL deve começar por postgres:// ou postgresql://. Início (sem password):',
+      JSON.stringify(raw.slice(0, 56)),
+      'comprimento:',
+      raw.length,
+    )
+    return
+  }
   try {
-    const forParse = /^postgres:\/\//i.test(raw) ? raw.replace(/^postgres:/i, 'postgresql:') : raw
+    const forParse = raw.replace(/^postgres(ql)?:/i, 'postgresql:')
     const u = new URL(forParse)
     const dbName = u.pathname?.replace(/^\//, '') || ''
     console.log('[api] DATABASE_URL alvo (password omitida):', {
@@ -1359,9 +1373,13 @@ function logDatabaseUrlTargetSummary(): void {
       database: dbName || '(sem nome na path)',
       userSet: Boolean(u.username),
     })
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
     console.warn(
-      '[api] DATABASE_URL não parece um URL postgres:// válido — confira aspas, espaços e novas linhas no hPanel.',
+      '[api] DATABASE_URL inválida para parse:',
+      msg,
+      '— Se a senha tiver @ # : % ou espaços, use URL-encoding na password (ex.: @ → %40). Comprimento:',
+      raw.length,
     )
   }
 }
