@@ -25,64 +25,6 @@ const END_ESCOLA =
   'Rua Dom Pedro II, 1972 - Bairro: Nossa Senhora das Gracas, nesta capital'
 const FORO = 'Porto Velho, capital do Estado de Rondonia'
 
-/** Só para 2 segmentos por vírgula: o nº costuma vir no 1.º trecho (ex.: "Rua X nº 4144, Bairro Y"). */
-function extractNumeroFromLogradouroSegment(logradouro: string): string | null {
-  const nMark =
-    logradouro.match(/\bn[º°]\s*\.?\s*(\d[\dA-Za-z-]*)/iu) ||
-    logradouro.match(/\bnr\.?\s*(\d[\dA-Za-z-]*)/iu)
-  if (nMark) return nMark[1]
-  const tail = logradouro.match(/\s(\d{1,6}[A-Za-z]?)\s*$/)
-  if (tail) return tail[1]
-  return null
-}
-
-function splitAddressRough(endereco: string): { logradouro: string; numero: string; bairro: string } {
-  const parts = endereco
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean)
-  if (parts.length === 0) {
-    return { logradouro: endereco || '_______', numero: '___', bairro: '_______' }
-  }
-  const bairro = parts[parts.length - 1]
-  const logradouro = parts[0]
-  let numero = 'S/N'
-  for (let i = 1; i < parts.length - 1; i++) {
-    const p = parts[i]
-    if (/nº|Nº|^\d+/i.test(p) || /^\d+[A-Za-z]?$/.test(p)) {
-      numero = p.replace(/nº\s*/gi, '').trim()
-      break
-    }
-  }
-  if (numero === 'S/N' && parts.length === 2) {
-    const fromStreet = extractNumeroFromLogradouroSegment(logradouro)
-    if (fromStreet) numero = fromStreet
-  }
-  return { logradouro, numero, bairro }
-}
-
-/**
- * Endereço sem vírgulas não pode ser partido em logradouro/bairro — senão o mesmo texto aparece duas vezes no contrato.
- * Com 2+ trechos separados por vírgula, usa o modelo “Rua/Av. … Nº … bairro …”.
- */
-function parseAddressForContract(endereco: string):
-  | { kind: 'structured'; logradouro: string; numero: string; bairro: string }
-  | { kind: 'full'; line: string } {
-  const trimmed = endereco.trim()
-  if (!trimmed) {
-    return { kind: 'full', line: '_______' }
-  }
-  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean)
-  if (parts.length < 2) {
-    return { kind: 'full', line: trimmed }
-  }
-  const { logradouro, numero, bairro } = splitAddressRough(trimmed)
-  if (logradouro === bairro) {
-    return { kind: 'full', line: trimmed }
-  }
-  return { kind: 'structured', logradouro, numero, bairro }
-}
-
 function discountPorExtenso(p: 0 | 5 | 10): string {
   const map: Record<number, string> = { 0: 'zero', 5: 'cinco', 10: 'dez' }
   return map[p] ?? String(p)
@@ -113,7 +55,7 @@ export async function generateEnrollmentContractPdf(
   const partyAddr = minorH
     ? (student.responsavel?.endereco ?? '').trim()
     : (student.endereco ?? '').trim()
-  const addrPdf = parseAddressForContract(partyAddr)
+  const partyAddrDisplay = partyAddr || '_______'
   const studentMention = student.nome
 
   const base = course.monthlyPrice
@@ -177,32 +119,16 @@ export async function generateEnrollmentContractPdf(
     y += paraGap(doc)
   }
 
-  const partyClauseSegments =
-    addrPdf.kind === 'full'
-      ? [
-          { text: partyName, bold: true as const },
-          { text: ', residente e domiciliado em ', bold: false as const },
-          { text: addrPdf.line, bold: true as const },
-          { text: ', portador do CPF nº ', bold: false as const },
-          { text: partyCpf, bold: true as const },
-          { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
-          { text: studentMention, bold: true as const },
-          { text: ', tem justo e contratado o que segue:', bold: false as const },
-        ]
-      : [
-          { text: partyName, bold: true as const },
-          { text: ', residente e domiciliado na Rua/Av. ', bold: false as const },
-          { text: addrPdf.logradouro, bold: true as const },
-          { text: ' Nº ', bold: false as const },
-          { text: addrPdf.numero, bold: true as const },
-          { text: ', bairro ', bold: false as const },
-          { text: addrPdf.bairro, bold: true as const },
-          { text: ', portador do CPF nº ', bold: false as const },
-          { text: partyCpf, bold: true as const },
-          { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
-          { text: studentMention, bold: true as const },
-          { text: ', tem justo e contratado o que segue:', bold: false as const },
-        ]
+  const partyClauseSegments = [
+    { text: partyName, bold: true as const },
+    { text: ', residente e domiciliado em ', bold: false as const },
+    { text: partyAddrDisplay, bold: true as const },
+    { text: ', portador do CPF nº ', bold: false as const },
+    { text: partyCpf, bold: true as const },
+    { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
+    { text: studentMention, bold: true as const },
+    { text: ', tem justo e contratado o que segue:', bold: false as const },
+  ]
 
   y = drawSegmentParagraph(
     doc,
