@@ -1342,11 +1342,37 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms))
 }
 
+/** Confirma que o painel injectou um URL válido (sem expor password). */
+function logDatabaseUrlTargetSummary(): void {
+  const raw = process.env.DATABASE_URL?.trim()
+  if (!raw) {
+    console.warn('[api] DATABASE_URL ausente — Prisma não liga ao Postgres.')
+    return
+  }
+  try {
+    const forParse = /^postgres:\/\//i.test(raw) ? raw.replace(/^postgres:/i, 'postgresql:') : raw
+    const u = new URL(forParse)
+    const dbName = u.pathname?.replace(/^\//, '') || ''
+    console.log('[api] DATABASE_URL alvo (password omitida):', {
+      host: u.hostname,
+      port: u.port || '5432',
+      database: dbName || '(sem nome na path)',
+      userSet: Boolean(u.username),
+    })
+  } catch {
+    console.warn(
+      '[api] DATABASE_URL não parece um URL postgres:// válido — confira aspas, espaços e novas linhas no hPanel.',
+    )
+  }
+}
+
 /**
  * Vários arranques em paralelo (Hostinger) → PANIC `timer has gone away`. O cliente Prisma
  * fica inutilizável após PANIC: recriamos o engine entre tentativas e usamos jitter em produção.
  */
 async function connectPrismaWithRetries(): Promise<void> {
+  logDatabaseUrlTargetSummary()
+
   if (process.env.NODE_ENV === 'production') {
     /**
      * Jitter moderado: o lock evita dois `listen`, mas o painel pode ainda disparar arranques
@@ -1358,14 +1384,21 @@ async function connectPrismaWithRetries(): Promise<void> {
     await sleep(jitter)
   }
 
+  console.log(
+    '[api] Prisma: a iniciar $connect() ao Postgres (se ficar sem linhas aqui em seguida, a ligação TCP/SSL pode estar pendurada até connect_timeout na URL, ex. 60s).',
+  )
+
   const max = 10
   for (let i = 0; i < max; i++) {
     try {
+      const t0 = Date.now()
+      console.log(`[api] Prisma: $connect() tentativa ${i + 1}/${max}…`)
       await prisma.$connect()
+      const ms = Date.now() - t0
       if (i > 0) {
-        console.log(`[api] Prisma ligado ao Postgres após ${i + 1} tentativa(s).`)
+        console.log(`[api] Prisma ligado ao Postgres após ${i + 1} tentativa(s) (${ms}ms nesta tentativa).`)
       } else {
-        console.log('[api] Prisma ligado ao Postgres.')
+        console.log(`[api] Prisma ligado ao Postgres (${ms}ms).`)
       }
       return
     } catch (e) {
