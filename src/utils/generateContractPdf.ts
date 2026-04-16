@@ -25,6 +25,17 @@ const END_ESCOLA =
   'Rua Dom Pedro II, 1972 - Bairro: Nossa Senhora das Gracas, nesta capital'
 const FORO = 'Porto Velho, capital do Estado de Rondonia'
 
+/** Só para 2 segmentos por vírgula: o nº costuma vir no 1.º trecho (ex.: "Rua X nº 4144, Bairro Y"). */
+function extractNumeroFromLogradouroSegment(logradouro: string): string | null {
+  const nMark =
+    logradouro.match(/\bn[º°]\s*\.?\s*(\d[\dA-Za-z-]*)/iu) ||
+    logradouro.match(/\bnr\.?\s*(\d[\dA-Za-z-]*)/iu)
+  if (nMark) return nMark[1]
+  const tail = logradouro.match(/\s(\d{1,6}[A-Za-z]?)\s*$/)
+  if (tail) return tail[1]
+  return null
+}
+
 function splitAddressRough(endereco: string): { logradouro: string; numero: string; bairro: string } {
   const parts = endereco
     .split(',')
@@ -42,6 +53,10 @@ function splitAddressRough(endereco: string): { logradouro: string; numero: stri
       numero = p.replace(/nº\s*/gi, '').trim()
       break
     }
+  }
+  if (numero === 'S/N' && parts.length === 2) {
+    const fromStreet = extractNumeroFromLogradouroSegment(logradouro)
+    if (fromStreet) numero = fromStreet
   }
   return { logradouro, numero, bairro }
 }
