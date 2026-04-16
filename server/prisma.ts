@@ -40,6 +40,11 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
 
     const params = new URLSearchParams(u.search.replace(/^\?/, ''))
 
+    /** `db.*.supabase.co` é Postgres directo — nunca misturar com `pgbouncer=true` (evita PANIC no Prisma). */
+    if (directDb) {
+      params.delete('pgbouncer')
+    }
+
     if (pooler && port === '6543') {
       if (!params.has('pgbouncer')) params.set('pgbouncer', 'true')
       if (!params.has('connection_limit')) params.set('connection_limit', '1')

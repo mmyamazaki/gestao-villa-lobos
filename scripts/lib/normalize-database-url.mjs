@@ -27,6 +27,10 @@ export function normalizeDatabaseUrlForPrisma(raw) {
 
     const params = new URLSearchParams(u.search.replace(/^\?/, ''))
 
+    if (directDb) {
+      params.delete('pgbouncer')
+    }
+
     if (pooler && port === '6543') {
       if (!params.has('pgbouncer')) params.set('pgbouncer', 'true')
       if (!params.has('connection_limit')) params.set('connection_limit', '1')

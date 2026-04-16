@@ -1397,13 +1397,13 @@ function logDatabaseUrlTargetSummary(): void {
 async function connectPrismaWithRetries(): Promise<void> {
   logDatabaseUrlTargetSummary()
 
+  /**
+   * Jitter mínimo só em produção: o lock evita dois `listen`; o `$connect` corre **antes** de
+   * `listen()` — jitter longo atrasava só o arranque e vários processos no painel continuavam
+   * a empilhar PANIC "timer has gone away".
+   */
   if (process.env.NODE_ENV === 'production') {
-    /**
-     * Jitter moderado: o lock evita dois `listen`, mas o painel pode ainda disparar arranques
-     * sobrepostos noutro cwd ou antes do lock — ~2s máx. desincroniza `$connect` sem bloquear
-     * tanto quanto o jitter antigo (~4,2s).
-     */
-    const jitter = 120 + Math.floor(Math.random() * 1880)
+    const jitter = 40 + Math.floor(Math.random() * 120)
     console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques).`)
     await sleep(jitter)
   }
@@ -1463,36 +1463,32 @@ export async function start(): Promise<void> {
   })
 
   /**
-   * Ligar Prisma **antes** de aceitar tráfego que usa Prisma, mas sem bloquear `listen()`:
-   * a promise arranca já; `prismaReadyGate` espera por esta promise nas rotas `/api/*` (exceto /api/health).
-   * Isto evita PANIC "timer has gone away" por vários findMany em paralelo com $connect().
+   * Prisma **antes** de `listen()`: evita tráfego HTTP + `$connect()` em paralelo no mesmo
+   * processo (PANIC "timer has gone away"). Vários arranques do painel ainda podem competir
+   * entre processos — o lock continua a evitar dois `listen` no mesmo cwd.
    */
   if (hasDatabaseUrlConfigured()) {
     prismaConnectionState = 'connecting'
     prismaConnectionError = null
     prismaGateFailureLogged = false
-    prismaBootstrapPromise = new Promise<void>((resolve) => {
-      void connectPrismaWithRetries().then(
-        () => {
-          prismaConnectionState = 'ready'
-          prismaConnectionError = null
-          resolve()
-        },
-        (e: unknown) => {
-          prismaConnectionState = 'failed'
-          prismaConnectionError = e instanceof Error ? e : new Error(String(e))
-          console.error('[api] Prisma: ligação ao Postgres falhou após retentativas.', prismaConnectionError)
-          resolve()
-        },
-      )
-    })
+    prismaBootstrapPromise = null
+    try {
+      await connectPrismaWithRetries()
+      prismaConnectionState = 'ready'
+      prismaConnectionError = null
+    } catch (e: unknown) {
+      prismaConnectionState = 'failed'
+      prismaConnectionError = e instanceof Error ? e : new Error(String(e))
+      console.error('[api] Prisma: ligação ao Postgres falhou antes de listen.', prismaConnectionError)
+    }
+    prismaBootstrapPromise = Promise.resolve()
   } else {
     prismaConnectionState = 'ready'
     prismaBootstrapPromise = Promise.resolve()
   }
 
   /**
-   * Hostinger/LiteSpeed: listen() rápido; GET /api/health e /health não dependem do gate.
+   * Hostinger/LiteSpeed: listen() após Prisma pronto (ou falha gravada para o gate).
    */
   return new Promise((resolvePromise, reject) => {
     const onListening = () => {
