@@ -18,6 +18,7 @@
     "postinstall": "node scripts/postinstall.mjs",
     "prestart": "node scripts/ensure-dist-server.mjs",
     "start": "node index.js",
+    "start:hostinger": "node scripts/ensure-dist-server.mjs && node index.js",
     "prelint": "npm run check-quick",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

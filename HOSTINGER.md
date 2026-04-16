@@ -21,7 +21,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
-   - **`PORT`:** na Hostinger **não** preenchas `PORT` manualmente — usa o valor **injectado pelo painel** (suporte Kodee). O código em produção escuta só com `process.env.PORT` (ou `3000` se vier vazio). **Remove `API_PORT`** das variáveis desta app Node no hPanel para não competir com o inject e evitar **503** por mismatch com o LiteSpeed. Em desenvolvimento local continua a usar `API_PORT` no `.env`. **LiteSpeed** pode mostrar um path de socket em `socket.address()` mesmo com bind TCP — ver notas nos logs da app.
+   - **`PORT`:** o ideal é o inject do painel (suporte Kodee — **não** cries `PORT` manual). O código usa `PORT` → `API_PORT` → `3000`. Se nos logs **`BOOT`** aparecer **`PORT` (unset)** após deploy, o inject **não está a chegar** ao Node (bug relatado na comunidade Hostinger): (1) no painel altera/guarda uma variável “dummy”, reimplanta; (2) em **Start command**, se o painel aceitar comando livre, usa **`node scripts/ensure-dist-server.mjs && node index.js`** (em vez de `npm start`) para o `PORT` ir directo ao `node`; se só aceitar npm, tenta **`npm run start:hostinger`**; (3) enquanto isso, define **`API_PORT=3000`** (ou a porta que o dashboard da app Node mostrar). **LiteSpeed** pode mostrar path de socket em `socket.address()` com bind TCP — ver logs.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
 

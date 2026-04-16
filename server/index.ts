@@ -153,8 +153,9 @@ type ListenTarget =
   | { type: 'unix'; path: string }
 
 /**
- * Hostinger (Kodee): em produção usar só `process.env.PORT` injectado pelo painel — não
- * `API_PORT` para escuta (evita mismatch com LiteSpeed). Em dev mantém-se `API_PORT` no .env.
+ * `PORT` injectado pelo painel tem prioridade. Em dev: `API_PORT` no `.env`.
+ * Na Hostinger o `PORT` por vezes **não chega** ao processo (ex.: bug de deploy / `npm` no Start);
+ * aí use `API_PORT` no painel **ou** Start directo com `node` (ver `npm run start:hostinger` no package.json).
  * Caminho Unix (`/...`) em `PORT` também é suportado.
  */
 function looksLikeUnixSocketPath(raw: string): boolean {
@@ -165,14 +166,12 @@ function looksLikeUnixSocketPath(raw: string): boolean {
 
 function resolveListenTarget(): ListenTarget {
   const raw =
-    NODE_ENV === 'production'
-      ? process.env.PORT?.trim() || '3000'
-      : process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
+    process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
 
   if (NODE_ENV === 'production' && !process.env.PORT?.trim()) {
     console.warn(
-      '[api] PORT (injectado pelo painel) está vazio em produção — a usar TCP 3000. ' +
-        'No hPanel: não defina PORT manualmente; remova API_PORT desta app se o proxy não responder (503).',
+      '[api] PORT (injectado) está vazio — a usar API_PORT ou 3000. ' +
+        'Se tiver 503: no hPanel tente Start `npm run start:hostinger` ou defina API_PORT com a porta interna que o painel da app mostra; ver HOSTINGER.md.',
     )
   }
 
