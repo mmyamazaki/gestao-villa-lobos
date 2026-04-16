@@ -23,6 +23,11 @@ import type {
   Teacher,
 } from '../src/domain/types.js'
 import { prisma, replacePrismaClientAfterEnginePanic } from './prisma.js'
+import {
+  combineRawDatabaseUrlFromEnv,
+  databaseUrlParseHints,
+  hasDatabaseUrlConfigured,
+} from './databaseUrlFromEnv.js'
 import { sanitizeDatabaseUrlFromPanel } from './sanitizeDatabaseUrl.js'
 import {
   courseFromPrisma,
@@ -234,9 +239,9 @@ function resolveCorsOrigin(): boolean | string | RegExp | (string | RegExp)[] {
   return list.length === 1 ? list[0]! : list
 }
 
-if (!process.env.DATABASE_URL?.trim()) {
+if (!hasDatabaseUrlConfigured()) {
   console.warn(
-    '[api] AVISO: DATABASE_URL ausente ou vazio no .env. Copie .env.example para .env e cole a connection string do Supabase.',
+    '[api] AVISO: DATABASE_URL (e opcionalmente DATABASE_URL_APPEND) ausente. Copie .env.example para .env ou defina no painel da hospedagem.',
   )
 }
 
@@ -273,7 +278,7 @@ function pathBypassesPrismaReadyGate(p: string): boolean {
 }
 
 function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
-  if (!process.env.DATABASE_URL?.trim()) {
+  if (!hasDatabaseUrlConfigured()) {
     next()
     return
   }
@@ -1345,14 +1350,18 @@ function sleep(ms: number) {
 
 /** Confirma que o painel injectou um URL válido (sem expor password). */
 function logDatabaseUrlTargetSummary(): void {
-  const rawEnv = process.env.DATABASE_URL?.trim()
-  if (!rawEnv) {
+  if (!hasDatabaseUrlConfigured()) {
     console.warn('[api] DATABASE_URL ausente — Prisma não liga ao Postgres.')
     return
   }
-  const raw = sanitizeDatabaseUrlFromPanel(rawEnv)
-  if (raw !== rawEnv) {
+  const rawMain = process.env.DATABASE_URL?.trim() ?? ''
+  const rawAppend = process.env.DATABASE_URL_APPEND?.trim() ?? ''
+  const raw = combineRawDatabaseUrlFromEnv()
+  if (rawMain && rawMain !== sanitizeDatabaseUrlFromPanel(rawMain)) {
     console.warn('[api] DATABASE_URL: removidas aspas/BOM à volta do valor (comum no hPanel).')
+  }
+  if (rawAppend) {
+    console.log('[api] DATABASE_URL: a usar sufixo DATABASE_URL_APPEND no resumo abaixo.')
   }
   if (!/^postgres(?:ql)?:\/\//i.test(raw)) {
     console.warn(
@@ -1375,12 +1384,9 @@ function logDatabaseUrlTargetSummary(): void {
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    console.warn(
-      '[api] DATABASE_URL inválida para parse:',
-      msg,
-      '— Se a senha tiver @ # : % ou espaços, use URL-encoding na password (ex.: @ → %40). Comprimento:',
-      raw.length,
-    )
+    const hints = databaseUrlParseHints(raw)
+    const hintLine = hints.length > 0 ? ` Dicas: ${hints.join(' ')}` : ''
+    console.warn(`[api] DATABASE_URL inválida para parse: ${msg} Comprimento: ${raw.length}.${hintLine}`)
   }
 }
 
@@ -1423,7 +1429,7 @@ async function connectPrismaWithRetries(): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e)
       const panic = /PANIC|timer has gone away/i.test(msg)
       if (i < max - 1) {
-        if (panic && process.env.DATABASE_URL?.trim()) {
+        if (panic && hasDatabaseUrlConfigured()) {
           await replacePrismaClientAfterEnginePanic()
         }
         const wait = panic ? 500 + i * 350 : 400 + i * 180
@@ -1461,7 +1467,7 @@ export async function start(): Promise<void> {
    * a promise arranca já; `prismaReadyGate` espera por esta promise nas rotas `/api/*` (exceto /api/health).
    * Isto evita PANIC "timer has gone away" por vários findMany em paralelo com $connect().
    */
-  if (process.env.DATABASE_URL?.trim()) {
+  if (hasDatabaseUrlConfigured()) {
     prismaConnectionState = 'connecting'
     prismaConnectionError = null
     prismaGateFailureLogged = false

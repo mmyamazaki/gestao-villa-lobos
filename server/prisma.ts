@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 
+import { combineRawDatabaseUrlFromEnv } from './databaseUrlFromEnv.js'
 import { sanitizeDatabaseUrlFromPanel } from './sanitizeDatabaseUrl.js'
 
 /**
@@ -72,12 +73,16 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
   }
 }
 
-const rawEnv = process.env.DATABASE_URL?.trim() ?? ''
-const raw = rawEnv ? sanitizeDatabaseUrlFromPanel(rawEnv) : ''
+const rawEnvMain = process.env.DATABASE_URL?.trim() ?? ''
+const rawEnvAppend = process.env.DATABASE_URL_APPEND?.trim() ?? ''
+const raw = combineRawDatabaseUrlFromEnv()
 const prismaUrl = raw ? normalizeDatabaseUrlForPrisma(raw) : undefined
 
-if (rawEnv && raw !== rawEnv) {
+if (rawEnvMain && sanitizeDatabaseUrlFromPanel(rawEnvMain) !== rawEnvMain) {
   console.warn('[api] DATABASE_URL: removido aspas/BOM extra do valor do painel (formato comum no hPanel).')
+}
+if (rawEnvAppend) {
+  console.log('[api] DATABASE_URL montada com DATABASE_URL_APPEND (URL longa / limite do painel).')
 }
 
 if (prismaUrl && raw && prismaUrl !== raw) {
