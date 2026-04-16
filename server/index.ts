@@ -153,9 +153,8 @@ type ListenTarget =
   | { type: 'unix'; path: string }
 
 /**
- * `PORT` injectado pelo painel tem prioridade. Em dev: `API_PORT` no `.env`.
- * Na Hostinger o `PORT` por vezes **não chega** ao processo (ex.: bug de deploy / `npm` no Start);
- * aí use `API_PORT` no painel **ou** Start directo com `node` (ver `npm run start:hostinger` no package.json).
+ * `PORT` injectado pelo painel tem prioridade (Hostinger).
+ * Fallback para `3000` para manter arranque mesmo quando o painel não injecta a variável.
  * Caminho Unix (`/...`) em `PORT` também é suportado.
  */
 function looksLikeUnixSocketPath(raw: string): boolean {
@@ -165,14 +164,10 @@ function looksLikeUnixSocketPath(raw: string): boolean {
 }
 
 function resolveListenTarget(): ListenTarget {
-  const raw =
-    process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
+  const raw = process.env.PORT?.trim() || '3000'
 
   if (NODE_ENV === 'production' && !process.env.PORT?.trim()) {
-    console.warn(
-      '[api] PORT (injectado) está vazio — a usar API_PORT ou 3000. ' +
-        'Se tiver 503: no hPanel tente Start `npm run start:hostinger` ou defina API_PORT com a porta interna que o painel da app mostra; ver HOSTINGER.md.',
-    )
+    console.warn('[api] PORT (injectado pelo painel) está vazio em produção — a usar TCP 3000.')
   }
 
   if (looksLikeUnixSocketPath(raw)) {
@@ -181,7 +176,7 @@ function resolveListenTarget(): ListenTarget {
 
   const n = Number(raw)
   if (!Number.isFinite(n) || n < 1 || n > 65535) {
-    console.warn(`[api] PORT/API_PORT inválido "${raw}" — a usar TCP 3000.`)
+    console.warn(`[api] PORT inválido "${raw}" — a usar TCP 3000.`)
     return { type: 'tcp', port: 3000, host: listenHost }
   }
   return { type: 'tcp', port: n, host: listenHost }
