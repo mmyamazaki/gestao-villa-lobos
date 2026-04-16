@@ -286,22 +286,23 @@ function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
     res.status(503).json({ error: 'Servidor a iniciar.' })
     return
   }
-  void boot.then(() => {
-    if (prismaConnectionState === 'failed') {
-      if (!prismaGateFailureLogged) {
-        prismaGateFailureLogged = true
-        console.error(
-          '[api] prismaReadyGate: API bloqueada (base indisponível no arranque).',
-          prismaConnectionError?.message ?? prismaConnectionError,
-        )
-      }
-      if (!res.headersSent) {
-        res.status(503).json({ error: 'Base de dados indisponível. Tente dentro de instantes.' })
-      }
-      return
+  if (prismaConnectionState === 'connecting') {
+    res.status(503).json({ error: 'Base de dados a iniciar. Tente dentro de instantes.' })
+    return
+  }
+  if (prismaConnectionState === 'failed') {
+    if (!prismaGateFailureLogged) {
+      prismaGateFailureLogged = true
+      console.error(
+        '[api] prismaReadyGate: API bloqueada (base indisponível no arranque).',
+        prismaConnectionError?.message ?? prismaConnectionError,
+      )
     }
-    next()
-  })
+    res.status(503).json({ error: 'Base de dados indisponível. Tente dentro de instantes.' })
+    return
+  }
+  void boot
+  next()
 }
 
 app.use(prismaReadyGate)
@@ -318,7 +319,12 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 app.get('/api/health/db', async (_req: Request, res: Response) => {
   try {
-    await prisma.$queryRaw`SELECT 1`
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health_db_timeout_8s')), 8_000),
+      ),
+    ])
     res.json({ ok: true, database: true })
   } catch (e) {
     console.error('[api/health/db]', e)

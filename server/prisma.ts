@@ -52,7 +52,8 @@ function normalizeDatabaseUrlForPrisma(raw: string): string {
 
     if (pooler || directDb) {
       if (!params.has('sslmode')) params.set('sslmode', 'require')
-      if (!params.has('connect_timeout')) params.set('connect_timeout', '60')
+      if (!params.has('connect_timeout')) params.set('connect_timeout', '10')
+      if (!params.has('pool_timeout')) params.set('pool_timeout', '10')
     }
 
     if (pooler) {
