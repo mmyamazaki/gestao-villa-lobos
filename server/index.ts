@@ -153,8 +153,7 @@ type ListenTarget =
   | { type: 'unix'; path: string }
 
 /**
- * `PORT` injectado pelo painel tem prioridade (Hostinger).
- * Fallback para `3000` para manter arranque mesmo quando o painel não injecta a variável.
+ * `PORT` injectado pelo painel tem prioridade. `API_PORT` como fallback quando o inject não chega.
  * Caminho Unix (`/...`) em `PORT` também é suportado.
  */
 function looksLikeUnixSocketPath(raw: string): boolean {
@@ -164,10 +163,12 @@ function looksLikeUnixSocketPath(raw: string): boolean {
 }
 
 function resolveListenTarget(): ListenTarget {
-  const raw = process.env.PORT?.trim() || '3000'
+  const raw = process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
 
   if (NODE_ENV === 'production' && !process.env.PORT?.trim()) {
-    console.warn('[api] PORT (injectado pelo painel) está vazio em produção — a usar TCP 3000.')
+    console.warn(
+      '[api] PORT (injectado) vazio — a usar API_PORT ou 3000. Na Hostinger defina API_PORT=3000 se o proxy devolver 503.',
+    )
   }
 
   if (looksLikeUnixSocketPath(raw)) {
@@ -1370,7 +1371,6 @@ async function connectPrismaWithRetries(): Promise<void> {
         continue
       }
       console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
-      releaseBootLockIfHeld()
       throw e instanceof Error ? e : new Error(String(e))
     }
   }
