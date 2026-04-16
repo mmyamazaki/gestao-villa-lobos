@@ -5,6 +5,7 @@ import {
 } from '../services/mensalidadeSupabase'
 import type { MensalidadeRegistrada } from '../domain/types'
 import { apiUrl } from './apiBase'
+import { fetchWithTimeoutPrismaBootRetry } from './apiPrismaBootWait'
 import { fetchWithTimeout } from './fetchWithTimeout'
 
 /**
@@ -13,7 +14,9 @@ import { fetchWithTimeout } from './fetchWithTimeout'
  */
 export async function fetchMensalidadesRemoteBestEffort(): Promise<MensalidadeRegistrada[]> {
   try {
-    const mr = await fetchWithTimeout(apiUrl('/api/mensalidades'), { timeoutMs: 45_000 })
+    const mr = await fetchWithTimeoutPrismaBootRetry(apiUrl('/api/mensalidades'), {
+      timeoutMs: 45_000,
+    })
     const text = await mr.text()
 
     if (mr.ok) {

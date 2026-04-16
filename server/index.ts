@@ -323,7 +323,7 @@ app.get('/api/health/db', async (_req: Request, res: Response) => {
     await Promise.race([
       prisma.$queryRaw`SELECT 1`,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('health_db_timeout_8s')), 8_000),
+        setTimeout(() => reject(new Error('health_db_timeout_15s')), 15_000),
       ),
     ])
     res.json({ ok: true, database: true })
@@ -1340,13 +1340,17 @@ function sleep(ms: number) {
  */
 async function connectPrismaWithRetries(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
-    /** Até ~4,2s — reduz PANIC por dois processos a fazer $connect() em sobreposição (Hostinger). */
-    const jitter = 200 + Math.floor(Math.random() * 4000)
-    console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques paralelos).`)
+    /**
+     * Jitter moderado: o lock evita dois `listen`, mas o painel pode ainda disparar arranques
+     * sobrepostos noutro cwd ou antes do lock — ~2s máx. desincroniza `$connect` sem bloquear
+     * tanto quanto o jitter antigo (~4,2s).
+     */
+    const jitter = 120 + Math.floor(Math.random() * 1880)
+    console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques).`)
     await sleep(jitter)
   }
 
-  const max = 6
+  const max = 10
   for (let i = 0; i < max; i++) {
     try {
       await prisma.$connect()
@@ -1363,7 +1367,7 @@ async function connectPrismaWithRetries(): Promise<void> {
         if (panic && process.env.DATABASE_URL?.trim()) {
           await replacePrismaClientAfterEnginePanic()
         }
-        const wait = panic ? 300 + i * 250 : 200 + i * 80
+        const wait = panic ? 500 + i * 350 : 400 + i * 180
         console.warn(
           `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC)' : ''}; a aguardar ${wait}ms…`,
         )

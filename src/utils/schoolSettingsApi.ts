@@ -1,5 +1,6 @@
 import type { SchoolSettings } from '../domain/types'
 import { apiUrl } from './apiBase'
+import { fetchWithTimeoutPrismaBootRetry } from './apiPrismaBootWait'
 import { fetchWithTimeout, readResponseTextWithTimeout } from './fetchWithTimeout'
 
 /**
@@ -8,7 +9,9 @@ import { fetchWithTimeout, readResponseTextWithTimeout } from './fetchWithTimeou
  */
 export async function fetchSchoolSettingsRemoteBestEffort(): Promise<SchoolSettings | null> {
   try {
-    const r = await fetchWithTimeout(apiUrl('/api/school/settings'), { timeoutMs: 30_000 })
+    const r = await fetchWithTimeoutPrismaBootRetry(apiUrl('/api/school/settings'), {
+      timeoutMs: 30_000,
+    })
     const text = await readResponseTextWithTimeout(r, 20_000)
     if (!r.ok) {
       console.warn('[schoolSettings] GET', r.status, text.slice(0, 160))

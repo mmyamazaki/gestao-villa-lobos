@@ -36,6 +36,7 @@ import { isSupabaseConfigured } from '../integrations/supabase/client'
 import { fetchSchoolCoreFromSupabase } from '../services/schoolCoreFromSupabase'
 import { isLikelyNetworkFailure, upsertTeacherInSupabase } from '../services/teacherSupabase'
 import { apiUrl } from '../utils/apiBase'
+import { fetchWithTimeoutPrismaBootRetry } from '../utils/apiPrismaBootWait'
 import { fetchWithTimeout, readResponseTextWithTimeout } from '../utils/fetchWithTimeout'
 import {
   fetchMensalidadesRemoteBestEffort,
@@ -591,7 +592,9 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const r = await fetchWithTimeout(apiUrl('/api/school/core'), { timeoutMs: 60_000 })
+        const r = await fetchWithTimeoutPrismaBootRetry(apiUrl('/api/school/core'), {
+          timeoutMs: 60_000,
+        })
         const text = await r.text()
 
         if (!r.ok) {
@@ -639,7 +642,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (e) {
-        console.info('[SchoolProvider] API /api/school/core indisponível; tentando Supabase se configurado.', e)
+        console.info(
+          '[SchoolProvider] GET /api/school/core falhou (rede, timeout ou erro HTTP); tentando Supabase se configurado.',
+          e,
+        )
 
         if (isSupabaseConfigured()) {
           try {
@@ -666,7 +672,9 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
                 }))
               }
             }
-            console.info('[SchoolProvider] Dados carregados via Supabase (API Node indisponível).')
+            console.info(
+              '[SchoolProvider] Dados carregados via Supabase (fallback: /api/school/core não respondeu OK).',
+            )
             return
           } catch (e2) {
             console.error('[SchoolProvider] Fallback Supabase falhou', e2)

@@ -5,6 +5,7 @@ import {
   upsertLessonLogInSupabase,
 } from '../services/lessonLogSupabase'
 import { apiUrl } from './apiBase'
+import { fetchWithTimeoutPrismaBootRetry } from './apiPrismaBootWait'
 import { fetchWithTimeout } from './fetchWithTimeout'
 
 /**
@@ -12,7 +13,7 @@ import { fetchWithTimeout } from './fetchWithTimeout'
  */
 export async function fetchLessonLogsRemoteBestEffort(): Promise<ClassSessionLog[]> {
   try {
-    const r = await fetchWithTimeout(apiUrl('/api/lesson-logs'), { timeoutMs: 45_000 })
+    const r = await fetchWithTimeoutPrismaBootRetry(apiUrl('/api/lesson-logs'), { timeoutMs: 45_000 })
     const text = await r.text()
 
     if (r.ok) {
