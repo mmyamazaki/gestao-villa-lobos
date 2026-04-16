@@ -9,6 +9,7 @@ import {
 } from 'react'
 import type { SchoolState } from '../domain/types'
 import { apiUrl } from '../utils/apiBase'
+import { fetchWithTimeoutPrismaBootRetry } from '../utils/apiPrismaBootWait'
 
 export type AuthRole = 'admin' | 'teacher' | 'student'
 
@@ -105,11 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginAdmin = useCallback(async (email: string, senha: string): Promise<AdminLoginResult> => {
     let r: Response
     try {
-      r = await fetch(apiUrl('/api/auth/admin/login'), {
+      r = await fetchWithTimeoutPrismaBootRetry(apiUrl('/api/auth/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email: email.trim(), password: senha }),
+        timeoutMs: 120_000,
       })
     } catch {
       return 'network'

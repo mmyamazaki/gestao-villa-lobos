@@ -91,7 +91,7 @@ export function Login() {
                     setErro('Sem ligação ao servidor. Verifique a internet e tente de novo.')
                   else
                     setErro(
-                      'O servidor da secretaria falhou (erro 500). Não é necessariamente a senha: confira na Hostinger os logs da app, DATABASE_URL e ADMIN_SESSION_SECRET.',
+                      'O servidor da secretaria não respondeu OK (erro 503 ou 500). Se acabou de reiniciar a app, aguarde a ligação ao Postgres e tente de novo. Confira na Hostinger: logs da app, DATABASE_URL e ADMIN_SESSION_SECRET.',
                     )
                 } finally {
                   setBusyAdmin(false)

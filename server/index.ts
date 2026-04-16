@@ -261,8 +261,16 @@ app.use(express.json({ limit: '20mb' }))
 
 /**
  * Bloqueia rotas que usam Prisma até o engine estar ligado (uma única sequência de $connect).
- * `/api/health` (sem DB) continua imediato para o proxy LiteSpeed.
+ * Rotas sem Prisma continuam imediatas (health, sessão admin só por cookie).
  */
+function pathBypassesPrismaReadyGate(p: string): boolean {
+  return (
+    p === '/api/health' ||
+    p === '/api/auth/admin/me' ||
+    p === '/api/auth/admin/logout'
+  )
+}
+
 function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
   if (!process.env.DATABASE_URL?.trim()) {
     next()
@@ -278,7 +286,7 @@ function prismaReadyGate(req: Request, res: Response, next: NextFunction) {
     next()
     return
   }
-  if (p === '/api/health') {
+  if (pathBypassesPrismaReadyGate(p)) {
     next()
     return
   }
