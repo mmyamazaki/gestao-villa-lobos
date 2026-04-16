@@ -21,7 +21,7 @@ O que **funciona**: criar uma **aplicação Node.js** no painel (nome pode varia
    - `DATABASE_URL` — connection string do Supabase/Postgres
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_ADMIN_EMAIL`
    - `ADMIN_SESSION_SECRET` (mín. 8 caracteres, aleatório — assina o cookie de sessão da secretaria; **obrigatório** em produção)
-   - **`PORT`** ou **`API_PORT`** — lógica interna da app (muitas vezes **3000**). **LiteSpeed** (Hostinger) pode expor a app por **socket Unix** (`extapp-sock/..._.sock`): o log `socket.address()` mostra esse caminho — **não** há serviço em `curl 127.0.0.1:3000` nesse modo; o auto-teste usa o socket Unix. O 503 no browser costuma ser **domínio / site errado no hPanel**, não “porta TCP”.
+   - **`PORT`:** na Hostinger **não** preenchas `PORT` manualmente — usa o valor **injectado pelo painel** (suporte Kodee). O código em produção escuta só com `process.env.PORT` (ou `3000` se vier vazio). **Remove `API_PORT`** das variáveis desta app Node no hPanel para não competir com o inject e evitar **503** por mismatch com o LiteSpeed. Em desenvolvimento local continua a usar `API_PORT` no `.env`. **LiteSpeed** pode mostrar um path de socket em `socket.address()` mesmo com bind TCP — ver notas nos logs da app.
    - Opcional: `ALLOWED_ORIGINS=https://teu-dominio.com` (se o CORS reclamar)
 5. **Guardar** e **Reimplantar / Deploy**.
 

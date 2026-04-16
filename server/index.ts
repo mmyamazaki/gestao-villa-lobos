@@ -153,8 +153,9 @@ type ListenTarget =
   | { type: 'unix'; path: string }
 
 /**
- * Alguns painéis podem passar o caminho do socket Unix em `PORT` em vez de um número.
- * Caso contrário: `PORT` (Railway, Render, etc.) → `API_PORT` (Hostinger / .env) → 3000.
+ * Hostinger (Kodee): em produção usar só `process.env.PORT` injectado pelo painel — não
+ * `API_PORT` para escuta (evita mismatch com LiteSpeed). Em dev mantém-se `API_PORT` no .env.
+ * Caminho Unix (`/...`) em `PORT` também é suportado.
  */
 function looksLikeUnixSocketPath(raw: string): boolean {
   const t = raw.trim()
@@ -164,9 +165,16 @@ function looksLikeUnixSocketPath(raw: string): boolean {
 
 function resolveListenTarget(): ListenTarget {
   const raw =
-    process.env.PORT?.trim() ||
-    process.env.API_PORT?.trim() ||
-    '3000'
+    NODE_ENV === 'production'
+      ? process.env.PORT?.trim() || '3000'
+      : process.env.PORT?.trim() || process.env.API_PORT?.trim() || '3000'
+
+  if (NODE_ENV === 'production' && !process.env.PORT?.trim()) {
+    console.warn(
+      '[api] PORT (injectado pelo painel) está vazio em produção — a usar TCP 3000. ' +
+        'No hPanel: não defina PORT manualmente; remova API_PORT desta app se o proxy não responder (503).',
+    )
+  }
 
   if (looksLikeUnixSocketPath(raw)) {
     return { type: 'unix', path: raw }
