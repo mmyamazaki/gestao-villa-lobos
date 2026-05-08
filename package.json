@@ -30,7 +30,9 @@
     "db:seed": "prisma db seed",
     "db:audit": "node scripts/db-deep-audit.mjs",
     "verify:env": "node scripts/verify-env.mjs",
-    "validate:backend": "node scripts/validate-backend-course.mjs"
+    "validate:backend": "node scripts/validate-backend-course.mjs",
+    "backup:financeiro": "bash scripts/backup-financeiro.sh",
+    "backup:verify": "bash scripts/verify-backup.sh"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"
