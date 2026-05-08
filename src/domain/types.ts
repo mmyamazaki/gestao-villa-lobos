@@ -70,6 +70,8 @@ export interface Enrollment {
   lessonMode: LessonMode
   slotKeys: string[]
   discountPercent: 0 | 5 | 10
+  /** Dia de vencimento das parcelas 2..12 (1..31). Contrato pode manter texto padrão. */
+  dueDay?: number
   matriculatedAt: string
 }
 

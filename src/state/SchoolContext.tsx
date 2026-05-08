@@ -121,7 +121,16 @@ function normalizeState(raw: Partial<SchoolState> | null): SchoolState {
       email: typeof s.email === 'string' ? s.email : '',
       login: typeof s.login === 'string' ? s.login : '',
       senha: typeof s.senha === 'string' ? s.senha : '',
-      enrollment: s.enrollment ? { ...s.enrollment, slotKeys: [...s.enrollment.slotKeys] } : null,
+      enrollment: s.enrollment
+        ? {
+            ...s.enrollment,
+            dueDay:
+              typeof s.enrollment.dueDay === 'number' && Number.isFinite(s.enrollment.dueDay)
+                ? Math.min(31, Math.max(1, Math.trunc(s.enrollment.dueDay)))
+                : 1,
+            slotKeys: [...s.enrollment.slotKeys],
+          }
+        : null,
     }
   })
   const mensalidades: MensalidadeRegistrada[] = (raw?.mensalidades ?? []).map((m) => {
@@ -485,6 +494,17 @@ export type SchoolContextValue = {
       liquidAmount?: number
     },
   ) => Promise<void>
+  updateMensalidadePayment: (
+    mensalidadeId: string,
+    payload: {
+      paidDate: string
+      manualFine: number
+      manualInterest: number
+      adjustmentNotes: string
+      liquidAmount: number
+    },
+  ) => Promise<void>
+  reopenMensalidadePayment: (mensalidadeId: string, reason: string) => Promise<void>
   saveLessonLog: (payload: {
     teacherId: string
     studentId: string
@@ -1015,6 +1035,84 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const updateMensalidadePayment = useCallback(
+    async (
+      mensalidadeId: string,
+      payload: {
+        paidDate: string
+        manualFine: number
+        manualInterest: number
+        adjustmentNotes: string
+        liquidAmount: number
+      },
+    ) => {
+      const d = payload.paidDate.slice(0, 10)
+      const fine = Number(payload.manualFine)
+      const interest = Number(payload.manualInterest)
+      const liquid = Math.round(Number(payload.liquidAmount) * 100) / 100
+      const reason = payload.adjustmentNotes.trim()
+      if (!reason) throw new Error('Informe o motivo da alteração.')
+      if (!Number.isFinite(fine) || !Number.isFinite(interest) || !Number.isFinite(liquid)) {
+        throw new Error('Valores inválidos para baixa.')
+      }
+
+      let merged: MensalidadeRegistrada | null = null
+      setState((prev) => {
+        const target = prev.mensalidades.find((m) => m.id === mensalidadeId)
+        if (!target || target.status === 'cancelado' || !target.paidAt) return prev
+        const auditStamp = new Date().toISOString().slice(0, 19)
+        const previous = `Anterior: data=${target.paidAt}, liquido=${target.liquidAmount.toFixed(2)}, multa=${(target.manualFine ?? 0).toFixed(2)}, juros=${(target.manualInterest ?? 0).toFixed(2)}`
+        const nextNotes = [target.adjustmentNotes, `[${auditStamp}] Edição de baixa. ${reason}. ${previous}`]
+          .filter(Boolean)
+          .join('\n')
+        merged = {
+          ...target,
+          paidAt: d,
+          status: 'pago',
+          liquidAmount: liquid,
+          manualFine: fine,
+          manualInterest: interest,
+          adjustmentNotes: nextNotes,
+        }
+        return {
+          ...prev,
+          mensalidades: prev.mensalidades.map((m) => (m.id === mensalidadeId ? merged! : m)),
+        }
+      })
+      if (!merged) throw new Error('Parcela paga não encontrada para edição.')
+      void pushMensalidadesToApi([merged])
+    },
+    [],
+  )
+
+  const reopenMensalidadePayment = useCallback(async (mensalidadeId: string, reason: string) => {
+    const cleanReason = reason.trim()
+    if (!cleanReason) throw new Error('Informe o motivo para reabrir a parcela.')
+    let merged: MensalidadeRegistrada | null = null
+    setState((prev) => {
+      const target = prev.mensalidades.find((m) => m.id === mensalidadeId)
+      if (!target || target.status === 'cancelado' || !target.paidAt) return prev
+      const auditStamp = new Date().toISOString().slice(0, 19)
+      const nextNotes = [target.adjustmentNotes, `[${auditStamp}] Baixa cancelada e parcela reaberta. Motivo: ${cleanReason}.`]
+        .filter(Boolean)
+        .join('\n')
+      merged = {
+        ...target,
+        paidAt: undefined,
+        status: 'pendente',
+        manualFine: undefined,
+        manualInterest: undefined,
+        adjustmentNotes: nextNotes,
+      }
+      return {
+        ...prev,
+        mensalidades: prev.mensalidades.map((m) => (m.id === mensalidadeId ? merged! : m)),
+      }
+    })
+    if (!merged) throw new Error('Parcela paga não encontrada para reabertura.')
+    void pushMensalidadesToApi([merged])
+  }, [])
+
   const saveLessonLog = useCallback(
     (payload: {
       teacherId: string
@@ -1198,6 +1296,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       deleteTeacher,
       saveStudent,
       registerMensalidadePayment,
+      updateMensalidadePayment,
+      reopenMensalidadePayment,
       saveLessonLog,
       scheduleReplacementClass,
       saveReplacementClassResult,
@@ -1216,6 +1316,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       deleteTeacher,
       saveStudent,
       registerMensalidadePayment,
+      updateMensalidadePayment,
+      reopenMensalidadePayment,
       saveLessonLog,
       scheduleReplacementClass,
       saveReplacementClassResult,

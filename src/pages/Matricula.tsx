@@ -63,6 +63,10 @@ function cloneStudent(b: Student): Student {
       ? {
           ...b.enrollment,
           slotKeys: [...b.enrollment.slotKeys],
+          dueDay:
+            typeof b.enrollment.dueDay === 'number' && Number.isFinite(b.enrollment.dueDay)
+              ? Math.min(31, Math.max(1, Math.trunc(b.enrollment.dueDay)))
+              : 1,
           matriculatedAt: (b.enrollment.matriculatedAt || new Date().toISOString().slice(0, 10)).slice(
             0,
             10,
@@ -505,7 +509,9 @@ function MatriculaInner({
   const buildEnrollment = () => {
     if (!draft.enrollment?.courseId || !draft.enrollment.teacherId) return null
     const mat = (draft.enrollment.matriculatedAt ?? '').trim().slice(0, 10)
+    const dueDay = Math.trunc(Number(draft.enrollment.dueDay ?? 1))
     if (!/^\d{4}-\d{2}-\d{2}$/.test(mat)) return null
+    if (!Number.isFinite(dueDay) || dueDay < 1 || dueDay > 31) return null
     if (!selectedKeys.length) return null
     if (lessonMode === '60x1' && selectedKeys.length !== 2) return null
     if (lessonMode === '30x2' && selectedKeys.length !== 2) return null
@@ -513,6 +519,7 @@ function MatriculaInner({
       ...draft.enrollment,
       lessonMode,
       slotKeys: sortSlotKeys(selectedKeys),
+      dueDay,
       matriculatedAt: mat,
     }
   }
@@ -520,6 +527,7 @@ function MatriculaInner({
   const commitDraft = (): Student | null => {
     const nextFieldErrors: Record<string, string> = {}
     const matRaw = (draft.enrollment?.matriculatedAt ?? '').trim().slice(0, 10)
+    const dueDayRaw = Math.trunc(Number(draft.enrollment?.dueDay ?? 1))
     const matOk = /^\d{4}-\d{2}-\d{2}$/.test(matRaw)
     const hasCourseTeacher =
       Boolean(draft.enrollment?.courseId) && Boolean(draft.enrollment?.teacherId)
@@ -528,6 +536,8 @@ function MatriculaInner({
       if (hasCourseTeacher && !matOk) {
         nextFieldErrors.matriculatedAt =
           'Informe a data da matrícula (inclusive retroativa, para cadastro de alunos já existentes).'
+      } else if (hasCourseTeacher && (!Number.isFinite(dueDayRaw) || dueDayRaw < 1 || dueDayRaw > 31)) {
+        nextFieldErrors.dueDay = 'Informe um dia de vencimento válido entre 1 e 31.'
       } else {
         nextFieldErrors.enrollment =
           'Preencha curso, professor, data da matrícula, desconto e selecione os horários corretamente.'
@@ -919,6 +929,7 @@ function MatriculaInner({
                       lessonMode,
                       slotKeys: [],
                       discountPercent: d.enrollment?.discountPercent ?? 0,
+                      dueDay: d.enrollment?.dueDay ?? 1,
                       matriculatedAt:
                         d.enrollment?.matriculatedAt || new Date().toISOString().slice(0, 10),
                     },
@@ -952,6 +963,7 @@ function MatriculaInner({
                     lessonMode,
                     slotKeys: [],
                     discountPercent: d.enrollment?.discountPercent ?? 0,
+                    dueDay: d.enrollment?.dueDay ?? 1,
                     matriculatedAt:
                       d.enrollment?.matriculatedAt || new Date().toISOString().slice(0, 10),
                   },
@@ -1010,6 +1022,32 @@ function MatriculaInner({
               <option value="5">5%</option>
               <option value="10">10%</option>
             </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Dia de vencimento das parcelas
+            <input
+              type="number"
+              min={1}
+              max={31}
+              step={1}
+              disabled={!draft.enrollment?.courseId}
+              className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-100 ${fieldErrors.dueDay ? 'border-red-400 bg-red-50/30' : 'border-slate-200'}`}
+              value={String(draft.enrollment?.dueDay ?? 1)}
+              onChange={(e) => {
+                const raw = Number(e.target.value)
+                const next = Number.isFinite(raw) ? Math.trunc(raw) : 1
+                setDraft((d) =>
+                  d.enrollment ? { ...d, enrollment: { ...d.enrollment, dueDay: next } } : d,
+                )
+                setFieldErrors((prev) => ({ ...prev, dueDay: '' }))
+              }}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Aplicado nas parcelas futuras (2ª a 12ª). Se o mês tiver menos dias, usa o último dia do mês.
+            </span>
+            {fieldErrors.dueDay && (
+              <span className="mt-1 block text-xs text-red-700">{fieldErrors.dueDay}</span>
+            )}
           </label>
           <label className="md:col-span-2 text-sm font-medium text-slate-700">
             Data da matrícula

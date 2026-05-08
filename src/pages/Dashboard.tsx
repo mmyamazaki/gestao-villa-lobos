@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { daysLateAfterDueDate, effectiveDueDateForLateFees } from '../domain/finance'
 import { isStudentActiveEnrolled } from '../domain/studentStatus'
 import { useSchool } from '../state/SchoolContext'
 import { FormActions } from '../components/FormActions'
@@ -34,8 +35,16 @@ export function Dashboard() {
     const unpaid = state.mensalidades.filter((m) => !m.paidAt && m.status !== 'cancelado')
     return {
       open: unpaid.length,
-      overdue: unpaid.filter((m) => m.dueDate < today).length,
-      dueSoon: unpaid.filter((m) => m.dueDate >= today && m.dueDate <= horizon).length,
+      overdue: unpaid.filter((m) => {
+        const due = new Date(m.dueDate + 'T12:00:00')
+        const now = new Date(today + 'T12:00:00')
+        return daysLateAfterDueDate(now, due) > 0
+      }).length,
+      dueSoon: unpaid.filter((m) => {
+        const due = effectiveDueDateForLateFees(new Date(m.dueDate + 'T12:00:00'))
+        const dueIso = due.toISOString().slice(0, 10)
+        return dueIso >= today && dueIso <= horizon
+      }).length,
     }
   }, [state.mensalidades, today, horizon])
 

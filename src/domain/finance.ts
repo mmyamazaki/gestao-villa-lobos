@@ -3,6 +3,32 @@ export function applyDiscount(baseMonthly: number, discountPercent: 0 | 5 | 10) 
   return baseMonthly * (1 - discountPercent / 100)
 }
 
+function atMidday(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/**
+ * Ajusta vencimento para o próximo dia útil quando cair em fim de semana.
+ * Regras atuais:
+ * - sábado -> segunda
+ * - domingo -> segunda
+ */
+export function effectiveDueDateForLateFees(dueDate: Date) {
+  const due = atMidday(dueDate)
+  const dow = due.getDay()
+  if (dow === 6) {
+    const shifted = new Date(due)
+    shifted.setDate(shifted.getDate() + 2)
+    return shifted
+  }
+  if (dow === 0) {
+    const shifted = new Date(due)
+    shifted.setDate(shifted.getDate() + 1)
+    return shifted
+  }
+  return due
+}
+
 export function lateFees(
   amountAfterDiscount: number,
   /** Dias corridos após o dia 01 (dia 02 = 1 dia de atraso) */
@@ -20,19 +46,16 @@ export function lateFees(
 export function daysLateFromPaymentDate(paymentDate: Date, referenceMonth: Date) {
   const due = new Date(referenceMonth.getFullYear(), referenceMonth.getMonth(), 1)
   const pay = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate())
-  if (pay <= due) return 0
-  const ms = pay.getTime() - due.getTime()
+  const effectiveDue = effectiveDueDateForLateFees(due)
+  if (pay <= effectiveDue) return 0
+  const ms = pay.getTime() - effectiveDue.getTime()
   return Math.ceil(ms / (24 * 60 * 60 * 1000))
-}
-
-function atMidday(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
 /** Dias corridos após o vencimento (dia seguinte ao vencimento = 1). */
 export function daysLateAfterDueDate(paymentDate: Date, dueDate: Date) {
   const pay = atMidday(paymentDate)
-  const due = atMidday(dueDate)
+  const due = effectiveDueDateForLateFees(dueDate)
   if (pay <= due) return 0
   const ms = pay.getTime() - due.getTime()
   return Math.ceil(ms / (24 * 60 * 60 * 1000))

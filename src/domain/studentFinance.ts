@@ -1,5 +1,5 @@
 import { differenceInCalendarDays, parseISO, startOfDay } from 'date-fns'
-import { lateFeesOnGross } from './finance'
+import { effectiveDueDateForLateFees, lateFeesOnGross } from './finance'
 import type { MensalidadeRegistrada } from './types'
 
 export type StudentParcelStatus = 'pago' | 'aberto' | 'atrasado' | 'cancelado'
@@ -37,11 +37,11 @@ export function computeStudentParcelView(
   }
 
   const today = startOfDay(refDate)
-  const due = startOfDay(parseISO(m.dueDate))
+  const due = startOfDay(effectiveDueDateForLateFees(parseISO(m.dueDate)))
 
   if (m.paidAt) {
     const pay = startOfDay(parseISO(m.paidAt))
-    const due = startOfDay(parseISO(m.dueDate))
+    const due = startOfDay(effectiveDueDateForLateFees(parseISO(m.dueDate)))
     const disc = m.baseAmount - m.liquidAmount
     if (m.waivesLateFees || pay <= due) {
       const multa = m.waivesLateFees ? 0 : m.manualFine != null ? m.manualFine : 0

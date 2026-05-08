@@ -5,6 +5,23 @@ function pad2(n: number) {
   return n.toString().padStart(2, '0')
 }
 
+function clampDueDay(day: number | undefined) {
+  const raw = Number(day)
+  if (!Number.isFinite(raw)) return 1
+  return Math.min(31, Math.max(1, Math.trunc(raw)))
+}
+
+function dueDateForReferenceMonth(referenceMonth: string, dueDayRaw: number | undefined) {
+  const [yS, mS] = referenceMonth.split('-')
+  const y = Number(yS)
+  const m = Number(mS)
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return `${referenceMonth}-01`
+  const dueDay = clampDueDay(dueDayRaw)
+  const maxDay = new Date(y, m, 0).getDate()
+  const day = Math.min(dueDay, maxDay)
+  return `${referenceMonth}-${pad2(day)}`
+}
+
 /** Adiciona n meses a YYYY-MM (calendário local). */
 export function addCalendarMonthsYm(ym: string, delta: number): string {
   const [yS, mS] = ym.split('-')
@@ -29,6 +46,7 @@ export function buildTwelveMensalidades(
   const startYm = mat.slice(0, 7)
   const base = course.monthlyPrice
   const contractDisc = enrollment.discountPercent
+  const dueDay = clampDueDay(enrollment.dueDay)
   const rows: MensalidadeRegistrada[] = []
 
   for (let p = 1; p <= 12; p++) {
@@ -60,7 +78,7 @@ export function buildTwelveMensalidades(
         courseLabel: `${course.instrumentLabel} · ${course.levelLabel}`,
         parcelNumber: p,
         referenceMonth,
-        dueDate: `${referenceMonth}-01`,
+        dueDate: dueDateForReferenceMonth(referenceMonth, dueDay),
         baseAmount: base,
         discountPercent: contractDisc,
         liquidAmount: liquid,

@@ -12,6 +12,7 @@ type Props = {
   paymentDate: string
   onClose: () => void
   onConfirm: (payload: {
+    paidDate: string
     manualFine: number
     manualInterest: number
     adjustmentNotes?: string
@@ -25,15 +26,43 @@ function PaymentMensalidadeModalForm({
   onClose,
   onConfirm,
 }: Omit<Props, 'open'>) {
+  const calcReferenceForDate = (dateIso: string) => {
+    if (m.waivesLateFees) {
+      return {
+        liquid: round2(m.baseAmount),
+        fine: 0,
+        interest: 0,
+      }
+    }
+    const due = new Date(m.dueDate + 'T12:00:00')
+    const pay = new Date(dateIso.slice(0, 10) + 'T12:00:00')
+    const late = daysLateAfterDueDate(pay, due)
+    if (late <= 0) {
+      return {
+        liquid: round2(applyDiscount(m.baseAmount, m.discountPercent)),
+        fine: 0,
+        interest: 0,
+      }
+    }
+    const auto = lateFeesOnGross(m.baseAmount, late)
+    return {
+      liquid: round2(m.baseAmount),
+      fine: round2(auto.fine),
+      interest: round2(auto.interest),
+    }
+  }
+
+  const [selectedPaymentDate, setSelectedPaymentDate] = useState(paymentDate.slice(0, 10))
+
   const system = useMemo(() => {
     if (m.waivesLateFees) return { fine: 0, interest: 0, late: 0, isLate: false }
     const due = new Date(m.dueDate + 'T12:00:00')
-    const pay = new Date(paymentDate + 'T12:00:00')
+    const pay = new Date(selectedPaymentDate + 'T12:00:00')
     const late = daysLateAfterDueDate(pay, due)
     if (late <= 0) return { fine: 0, interest: 0, late: 0, isLate: false }
     const f = lateFeesOnGross(m.baseAmount, late)
     return { fine: f.fine, interest: f.interest, late, isLate: true }
-  }, [m, paymentDate])
+  }, [m, selectedPaymentDate])
 
   const defaultFine = useMemo(() => {
     if (m.waivesLateFees) return 0
@@ -49,18 +78,16 @@ function PaymentMensalidadeModalForm({
   const defaultLiquid = useMemo(() => {
     if (m.waivesLateFees) return round2(m.baseAmount)
     const due = new Date(m.dueDate + 'T12:00:00')
-    const pay = new Date(paymentDate + 'T12:00:00')
+    const pay = new Date(selectedPaymentDate + 'T12:00:00')
     if (daysLateAfterDueDate(pay, due) <= 0) {
       return round2(applyDiscount(m.baseAmount, m.discountPercent))
     }
     return round2(m.baseAmount)
-  }, [m.baseAmount, m.dueDate, m.discountPercent, m.waivesLateFees, paymentDate])
+  }, [m.baseAmount, m.dueDate, m.discountPercent, m.waivesLateFees, selectedPaymentDate])
   const liquidEditable = true
 
   const [liquidStr, setLiquidStr] = useState(() => defaultLiquid.toFixed(2))
-  const [fineStr, setFineStr] = useState(() =>
-    m.waivesLateFees ? '0.00' : defaultFine.toFixed(2),
-  )
+  const [fineStr, setFineStr] = useState(() => (m.waivesLateFees ? '0.00' : defaultFine.toFixed(2)))
   const [interestStr, setInterestStr] = useState(() =>
     m.waivesLateFees ? '0.00' : defaultInterest.toFixed(2),
   )
@@ -92,6 +119,10 @@ function PaymentMensalidadeModalForm({
 
   const handleConfirm = async () => {
     setSubmitErr(null)
+    if (!selectedPaymentDate) {
+      setSubmitErr('Informe a data de pagamento deste lançamento.')
+      return
+    }
     if (needsNote && !notes.trim()) {
       setSubmitErr(
         'Descreva o motivo do ajuste (valor líquido, multa ou juros) em “Observações”.',
@@ -110,6 +141,7 @@ function PaymentMensalidadeModalForm({
     }
     try {
       await onConfirm({
+        paidDate: selectedPaymentDate,
         manualFine: fine,
         manualInterest: interest,
         adjustmentNotes: notes.trim() || undefined,
@@ -151,7 +183,7 @@ function PaymentMensalidadeModalForm({
             </p>
             <p>
               Pagamento (referência):{' '}
-              <span className="font-medium tabular-nums">{paymentDate}</span>
+              <span className="font-medium tabular-nums">{selectedPaymentDate}</span>
             </p>
             <p>
               Bruto:{' '}
@@ -174,6 +206,26 @@ function PaymentMensalidadeModalForm({
               </p>
             )}
           </div>
+
+          <label className="block text-xs font-medium text-slate-700">
+            Data de pagamento deste lançamento
+            <input
+              type="date"
+              value={selectedPaymentDate}
+              onChange={(e) => {
+                const nextDate = e.target.value
+                setSelectedPaymentDate(nextDate)
+                const ref = calcReferenceForDate(nextDate)
+                setLiquidStr(ref.liquid.toFixed(2))
+                setFineStr(ref.fine.toFixed(2))
+                setInterestStr(ref.interest.toFixed(2))
+              }}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm tabular-nums outline-none ring-emerald-500/30 focus:border-emerald-600 focus:ring-2"
+            />
+            <span className="mt-0.5 block text-[10px] text-slate-500">
+              Esta data será usada para salvar a baixa e calcular atraso/multa/juros.
+            </span>
+          </label>
 
           <label className="block text-xs font-medium text-slate-700">
             Valor líquido desta baixa (R$)
