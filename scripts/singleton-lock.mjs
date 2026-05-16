@@ -1,9 +1,9 @@
 /**
  * Uma única instância Node a fazer `listen` (Hostinger dispara vários arranques em paralelo).
  *
- * Lock **atómico**: `openSync(caminho, 'wx')` — no POSIX só um processo cria o ficheiro.
- * O lock antigo (pasta + `pid`) deixava janelas em que vários processos chegavam a `LISTENING`
- * → LiteSpeed aproximava-se do socket errado → **503**.
+ * O ficheiro de lock mantém-se **aberto** até ao exit do processo (não fechar o fd após
+ * escrever o pid). Se fecharmos cedo, outro arranque pode apagar o ficheiro enquanto este
+ * processo ainda está a subir → dois `LISTENING` → LiteSpeed no socket errado → **503**.
  */
 import {
   closeSync,
@@ -27,6 +27,9 @@ const LEGACY_LOCK_DIR = 'gestao-villa-lobos.node.lock'
 
 const STRICT_LOCK = process.env.NODE_ENV === 'production'
 const MAX_ATTEMPTS = 100
+
+/** fd mantido aberto durante toda a vida do processo (libertado em exit). */
+let lockFd = null
 
 function pidIsLiveNonZombie(pid) {
   try {
@@ -73,6 +76,29 @@ function cleanupLegacyDirLock(baseDir) {
   }
 }
 
+function readOwnerPid(lockFile) {
+  try {
+    const raw = readFileSync(lockFile, 'utf8').trim()
+    const pid = parseInt(raw, 10)
+    if (Number.isFinite(pid) && pid > 0) return pid
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function releaseSingletonLock() {
+  if (lockFd == null) return
+  try {
+    closeSync(lockFd)
+  } catch {
+    /* ignore */
+  }
+  lockFd = null
+}
+
+process.on('exit', releaseSingletonLock)
+
 export async function acquireSingletonLock() {
   const base = resolveLockBaseDir()
   cleanupLegacyDirLock(base)
@@ -81,12 +107,8 @@ export async function acquireSingletonLock() {
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      const fd = openSync(lockFile, 'wx', 0o644)
-      try {
-        writeSync(fd, Buffer.from(`${process.pid}\n`, 'utf8'))
-      } finally {
-        closeSync(fd)
-      }
+      lockFd = openSync(lockFile, 'wx', 0o644)
+      writeSync(lockFd, Buffer.from(`${process.pid}\n`, 'utf8'))
       return true
     } catch (e) {
       if (e?.code !== 'EEXIST') {
@@ -94,24 +116,21 @@ export async function acquireSingletonLock() {
         return STRICT_LOCK ? false : true
       }
 
-      let ownerPid = null
-      let canRead = false
-      try {
-        const raw = readFileSync(lockFile, 'utf8').trim()
-        const pid = parseInt(raw, 10)
-        if (Number.isFinite(pid) && pid > 0) {
-          ownerPid = pid
-          canRead = true
-        }
-      } catch {
-        canRead = false
-      }
+      /** Dar tempo ao dono do lock escrever o pid (evita unlink enquanto o outro ainda sobe). */
+      await sleep(40 + Math.floor(Math.random() * 80))
 
-      if (canRead && ownerPid != null && pidIsLiveNonZombie(ownerPid)) {
+      const ownerPid = readOwnerPid(lockFile)
+      if (ownerPid != null && pidIsLiveNonZombie(ownerPid)) {
         console.log(
           `[boot] instância Node já em execução (pid ${ownerPid}); esta cópia encerra para evitar vários listen e 2× Prisma.`,
         )
         return false
+      }
+
+      if (ownerPid == null) {
+        /** Ficheiro existe mas pid ainda ilegível — não apagar; esperar e repetir. */
+        await sleep(30 + Math.floor(Math.random() * 50))
+        continue
       }
 
       try {

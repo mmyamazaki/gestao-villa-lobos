@@ -6,6 +6,8 @@
 import 'dotenv/config'
 
 import { existsSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync } from 'node:fs'
+import http from 'node:http'
+import type { Server } from 'node:http'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -196,6 +198,43 @@ function unixSocketPathFromAddress(addr: string | import('node:net').AddressInfo
   if (addr == null) return null
   if (typeof addr === 'string') return addr
   return null
+}
+
+/** Confirma que o processo aceita HTTP (útil nos logs Hostinger vs 503 no browser). */
+function probeHealthAfterListen(server: Server, target: ListenTarget): void {
+  setImmediate(() => {
+    if (target.type === 'unix') {
+      const sockPath =
+        typeof server.address() === 'string' ? (server.address() as string) : target.path
+      const req = http.get({ socketPath: sockPath, path: '/health', timeout: 5000 }, (res) => {
+        console.log(`[api] auto-teste unix:${sockPath} → HTTP ${res.statusCode}`)
+        res.resume()
+      })
+      req.on('error', (e) => {
+        console.warn('[api] auto-teste unix falhou:', e instanceof Error ? e.message : e)
+      })
+      req.on('timeout', () => {
+        req.destroy()
+        console.warn('[api] auto-teste unix: timeout')
+      })
+      return
+    }
+    const req = http.get(
+      `http://127.0.0.1:${target.port}/health`,
+      { timeout: 5000 },
+      (res) => {
+        console.log(`[api] auto-teste loopback:${target.port} → HTTP ${res.statusCode}`)
+        res.resume()
+      },
+    )
+    req.on('error', (e) => {
+      console.warn('[api] auto-teste loopback falhou:', e instanceof Error ? e.message : e)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      console.warn('[api] auto-teste loopback: timeout')
+    })
+  })
 }
 
 /**
@@ -1526,6 +1565,7 @@ export async function start(): Promise<void> {
               : `[api] 503 no browser? hPanel: porta app = ${listenTarget.port}, domínio = esta Node app.`,
           )
         }
+        probeHealthAfterListen(server, listenTarget)
       }
       resolvePromise()
     }
