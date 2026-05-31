@@ -1447,7 +1447,14 @@ async function connectPrismaWithRetries(): Promise<void> {
     '[api] Prisma: a iniciar $connect() ao Postgres (se ficar sem linhas aqui em seguida, a ligação TCP/SSL pode estar pendurada até connect_timeout na URL, ex. 60s).',
   )
 
-  const max = 10
+  /**
+   * Menos tentativas e backoff maior: cada recriação do engine após PANIC abre um subprocesso
+   * Prisma; muitas tentativas rápidas inflavam o número de processos (Hostinger: Max Processes).
+   */
+  const max = 4
+  /** Limite de recriações do engine por arranque — evita rajada de subprocessos do engine. */
+  const maxEngineRecreations = 2
+  let engineRecreations = 0
   for (let i = 0; i < max; i++) {
     try {
       const t0 = Date.now()
@@ -1464,10 +1471,11 @@ async function connectPrismaWithRetries(): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e)
       const panic = /PANIC|timer has gone away/i.test(msg)
       if (i < max - 1) {
-        if (panic && hasDatabaseUrlConfigured()) {
+        if (panic && hasDatabaseUrlConfigured() && engineRecreations < maxEngineRecreations) {
+          engineRecreations++
           await replacePrismaClientAfterEnginePanic()
         }
-        const wait = panic ? 500 + i * 350 : 400 + i * 180
+        const wait = panic ? 1500 + i * 1000 : 800 + i * 400
         console.warn(
           `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC)' : ''}; a aguardar ${wait}ms…`,
         )
