@@ -1,14 +1,12 @@
-import { PrismaClient } from '@prisma/client'
 import { config } from 'dotenv'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { normalizeDatabaseUrlForPrisma } from './lib/normalize-database-url.mjs'
+
+import { makePrismaClient } from './lib/make-prisma.mjs'
 
 config({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') })
 
-const raw = process.env.DATABASE_URL?.trim()
-const url = raw ? normalizeDatabaseUrlForPrisma(raw) : undefined
-const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : undefined)
+const prisma = makePrismaClient()
 
 const REQUIRED_TABLE_COLUMNS = {
   Course: ['id', 'instrument', 'instrumentLabel', 'levelLabel', 'monthlyPrice'],

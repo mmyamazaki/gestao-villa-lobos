@@ -1,12 +1,8 @@
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
-import { normalizeDatabaseUrlForPrisma } from '../scripts/lib/normalize-database-url.mjs'
+import { makePrismaClient } from '../scripts/lib/make-prisma.mjs'
 
-const raw = process.env.DATABASE_URL?.trim()
-const prisma = new PrismaClient(
-  raw ? { datasources: { db: { url: normalizeDatabaseUrlForPrisma(raw) } } } : undefined,
-)
+const prisma = makePrismaClient()
 
 function adminEmail() {
   const e = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || 'secretaria@escola.br'

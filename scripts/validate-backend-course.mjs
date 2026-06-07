@@ -4,14 +4,11 @@
  * Requer: DATABASE_URL no .env; para HTTP, API em API_PORT (padrão 3333).
  */
 import 'dotenv/config'
-import { PrismaClient, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
-import { normalizeDatabaseUrlForPrisma } from './lib/normalize-database-url.mjs'
+import { makePrismaClient } from './lib/make-prisma.mjs'
 
-const raw = process.env.DATABASE_URL?.trim()
-const prisma = new PrismaClient(
-  raw ? { datasources: { db: { url: normalizeDatabaseUrlForPrisma(raw) } } } : undefined,
-)
+const prisma = makePrismaClient()
 const testId = `validate-crud-${Date.now().toString(36)}`
 
 async function runPrismaCrud() {

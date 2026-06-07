@@ -5,7 +5,8 @@
 // SchoolSettings: GET/PUT /api/school/settings.
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "client"
 }
 
 // DATABASE_URL: server/prisma.ts ajusta Supabase pooler (6543→5432 sessão) ou :6543 com pgbouncer.

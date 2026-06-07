@@ -1,3 +1,4 @@
+import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 
 import { combineRawDatabaseUrlFromEnv } from './databaseUrlFromEnv.js'
@@ -105,10 +106,56 @@ if (prismaUrl && raw && prismaUrl !== raw) {
   )
 }
 
+/**
+ * Constrói a config do pool `pg` a partir da URL já normalizada.
+ *
+ * Sem engine Rust (`engineType = "client"`), a ligação é feita pelo driver `pg` (JS puro). Isto
+ * elimina o `PANIC: timer has gone away` do engine nativo nos workers do LiteSpeed/LSAPI da Hostinger.
+ *
+ * `pg` não entende `pgbouncer`/`connection_limit` (parâmetros só do Prisma) → removem-se da URL;
+ * o limite de ligações por worker passa a `max` no pool. SSL é tratado por opção explícita
+ * (`rejectUnauthorized: false`) para o pooler do Supabase, evitando falhas de certificado.
+ */
+function buildPgPoolConfig(url: string): {
+  connectionString: string
+  max: number
+  ssl?: { rejectUnauthorized: boolean }
+  connectionTimeoutMillis: number
+} {
+  try {
+    const forParse = url.replace(/^postgres(ql)?:/i, 'postgresql:')
+    const u = new URL(forParse)
+    const host = u.hostname.toLowerCase()
+    const needsSsl = isSupabasePoolerHost(host) || isSupabaseDirectDbHost(host)
+    const params = new URLSearchParams(u.search.replace(/^\?/, ''))
+    const connectionLimit = Number.parseInt(params.get('connection_limit') ?? '', 10)
+    params.delete('pgbouncer')
+    params.delete('connection_limit')
+    params.delete('sslmode')
+    u.search = params.toString()
+    const connectionString = u.toString().replace(/^postgresql:/i, 'postgres:')
+    return {
+      connectionString,
+      max: Number.isFinite(connectionLimit) && connectionLimit > 0 ? connectionLimit : 1,
+      connectionTimeoutMillis: 60_000,
+      ...(needsSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+    }
+  } catch {
+    return { connectionString: url, max: 1, connectionTimeoutMillis: 60_000 }
+  }
+}
+
 function createPrismaClient(): PrismaClient {
-  return new PrismaClient(
-    prismaUrl ? { datasources: { db: { url: prismaUrl } } } : undefined,
-  )
+  if (!prismaUrl) {
+    /** Sem DATABASE_URL: cliente inerte. O gate de `/api` já bloqueia; evita crash no boot. */
+    return new Proxy({} as PrismaClient, {
+      get() {
+        throw new Error('DATABASE_URL ausente: Prisma indisponível.')
+      },
+    }) as PrismaClient
+  }
+  const adapter = new PrismaPg(buildPgPoolConfig(prismaUrl))
+  return new PrismaClient({ adapter })
 }
 
 let prismaInstance = createPrismaClient()
@@ -128,11 +175,11 @@ export const prisma = new Proxy({} as PrismaClient, {
 }) as PrismaClient
 
 /**
- * Após `PANIC: timer has gone away`, o mesmo cliente fica corrompido — retentativas de `$connect`
- * no mesmo objeto não recuperam. Recria o engine com novo `PrismaClient`.
+ * Sem engine Rust (driver `pg`), o `PANIC: timer has gone away` deixa de ocorrer. Mantém-se esta
+ * rotina para recriar o pool `pg` caso fique num estado mau (recriar o `PrismaClient` recria o pool).
  */
 export async function replacePrismaClientAfterEnginePanic(): Promise<void> {
-  console.warn('[api] Prisma: PANIC no engine — a recriar cliente.')
+  console.warn('[api] Prisma: a recriar cliente/pool pg.')
   try {
     await prismaInstance.$disconnect()
   } catch {

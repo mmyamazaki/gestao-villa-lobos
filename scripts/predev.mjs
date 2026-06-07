@@ -8,7 +8,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { normalizeDatabaseUrlForPrisma } from './lib/normalize-database-url.mjs'
+import { makePrismaClient } from './lib/make-prisma.mjs'
 import { REQUIRED_ENV_KEYS } from './lib/required-env.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -135,11 +135,7 @@ async function pickUsableApiPort(startPort) {
 }
 
 async function checkPrisma() {
-  const { PrismaClient } = await import('@prisma/client')
-  const raw = process.env.DATABASE_URL?.trim()
-  const prisma = new PrismaClient(
-    raw ? { datasources: { db: { url: normalizeDatabaseUrlForPrisma(raw) } } } : undefined,
-  )
+  const prisma = makePrismaClient()
   try {
     await prisma.$queryRaw`SELECT 1 AS ok`
     console.log('[predev] Prisma: conexão com o banco (DATABASE_URL) OK.')
