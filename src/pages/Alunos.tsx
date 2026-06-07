@@ -220,6 +220,14 @@ export function Alunos() {
                 >
                   Editar
                 </Link>
+                {s.enrollment && (
+                  <Link
+                    to={`/alunos/${s.id}?rematricula=1`}
+                    className="inline-flex min-h-[44px] items-center rounded-lg border border-sky-200 px-3 py-2 text-sm font-medium text-sky-800"
+                  >
+                    Rematricular
+                  </Link>
+                )}
                 <button
                   type="button"
                   className="inline-flex min-h-[44px] items-center rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-800"
@@ -329,6 +337,14 @@ export function Alunos() {
                       >
                         Editar
                       </Link>
+                      {s.enrollment && (
+                        <Link
+                          to={`/alunos/${s.id}?rematricula=1`}
+                          className="text-sm font-medium text-sky-800 hover:text-sky-900"
+                        >
+                          Rematricular
+                        </Link>
+                      )}
                       <button
                         type="button"
                         className="inline-flex min-h-[44px] items-center text-sm font-medium text-violet-800 hover:text-violet-900"

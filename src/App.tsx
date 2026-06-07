@@ -13,6 +13,7 @@ import { Login } from './pages/Login'
 import { Matricula } from './pages/Matricula'
 import { ProfessorForm } from './pages/ProfessorForm'
 import { Professores } from './pages/Professores'
+import { Relatorios } from './pages/Relatorios'
 import { AlunoPainel } from './pages/portal/AlunoPainel'
 import { ProfessorAgenda } from './pages/portal/ProfessorAgenda'
 
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="professores/:id" element={<ProfessorForm />} />
         <Route path="financeiro" element={<Financeiro />} />
         <Route path="calendario" element={<Calendario />} />
+        <Route path="relatorios" element={<Relatorios />} />
         <Route path="configuracoes" element={<Configuracoes />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

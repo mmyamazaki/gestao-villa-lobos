@@ -119,16 +119,25 @@ export async function generateEnrollmentContractPdf(
     y += paraGap(doc)
   }
 
-  const partyClauseSegments = [
-    { text: partyName, bold: true as const },
-    { text: ', residente e domiciliado em ', bold: false as const },
-    { text: partyAddrDisplay, bold: true as const },
-    { text: ', portador do CPF nº ', bold: false as const },
-    { text: partyCpf, bold: true as const },
-    { text: ', aluno ou responsável legal pelo menor/aluno(a) ', bold: false as const },
-    { text: studentMention, bold: true as const },
-    { text: ', tem justo e contratado o que segue:', bold: false as const },
-  ]
+  const partyClauseSegments = minorH
+    ? [
+        { text: partyName, bold: true as const },
+        { text: ', residente e domiciliado em ', bold: false as const },
+        { text: partyAddrDisplay, bold: true as const },
+        { text: ', portador do CPF nº ', bold: false as const },
+        { text: partyCpf, bold: true as const },
+        { text: ', responsável legal pelo(a) aluno(a) ', bold: false as const },
+        { text: studentMention, bold: true as const },
+        { text: ', tem justo e contratado o que segue:', bold: false as const },
+      ]
+    : [
+        { text: partyName, bold: true as const },
+        { text: ', residente e domiciliado em ', bold: false as const },
+        { text: partyAddrDisplay, bold: true as const },
+        { text: ', portador do CPF nº ', bold: false as const },
+        { text: partyCpf, bold: true as const },
+        { text: ', doravante denominado(a) aluno(a), tem justo e contratado o que segue:', bold: false as const },
+      ]
 
   y = drawSegmentParagraph(
     doc,
@@ -370,5 +379,7 @@ export async function generateEnrollmentContractPdf(
   doc.text('Aluno / Responsável', PDF_MARGIN_X, y)
   doc.text(SCHOOL_DISPLAY_NAME, 120, y)
 
-  doc.save(`contrato-prestacao-servicos-${student.codigo.replace('.', '-')}.pdf`)
+  // Ano no nome do arquivo evita sobrescrever contratos de rematrículas (mesmo código do aluno).
+  const anoArquivo = (en.matriculatedAt || '').slice(0, 4) || new Date().getFullYear().toString()
+  doc.save(`contrato-prestacao-servicos-${student.codigo.replace('.', '-')}-${anoArquivo}.pdf`)
 }

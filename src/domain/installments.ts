@@ -41,6 +41,7 @@ export function buildTwelveMensalidades(
   course: Course,
   enrollment: Enrollment,
   generatedAt: string,
+  cycle = 1,
 ): MensalidadeRegistrada[] {
   const mat = enrollment.matriculatedAt
   const startYm = mat.slice(0, 7)
@@ -49,15 +50,22 @@ export function buildTwelveMensalidades(
   const dueDay = clampDueDay(enrollment.dueDay)
   const rows: MensalidadeRegistrada[] = []
 
+  // Ciclo 1 mantém o id legado (compatível com dados/linhas já gravadas). Ciclos >= 2 incluem o ciclo.
+  const buildId = (p: number, referenceMonth: string) =>
+    cycle <= 1
+      ? `mens-${student.id}-p${p}-${course.id}-${referenceMonth}`
+      : `mens-${student.id}-c${cycle}-p${p}-${course.id}-${referenceMonth}`
+
   for (let p = 1; p <= 12; p++) {
     const referenceMonth = addCalendarMonthsYm(startYm, p - 1)
     if (p === 1) {
       rows.push({
-        id: `mens-${student.id}-p${p}-${course.id}-${referenceMonth}`,
+        id: buildId(p, referenceMonth),
         studentId: student.id,
         studentNome: student.nome,
         courseId: course.id,
         courseLabel: `${course.instrumentLabel} · ${course.levelLabel}`,
+        cycle,
         parcelNumber: p,
         referenceMonth,
         dueDate: mat,
@@ -71,11 +79,12 @@ export function buildTwelveMensalidades(
     } else {
       const liquid = applyDiscount(base, contractDisc)
       rows.push({
-        id: `mens-${student.id}-p${p}-${course.id}-${referenceMonth}`,
+        id: buildId(p, referenceMonth),
         studentId: student.id,
         studentNome: student.nome,
         courseId: course.id,
         courseLabel: `${course.instrumentLabel} · ${course.levelLabel}`,
+        cycle,
         parcelNumber: p,
         referenceMonth,
         dueDate: dueDateForReferenceMonth(referenceMonth, dueDay),

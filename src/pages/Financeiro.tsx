@@ -1,7 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { jsPDF } from 'jspdf'
 import { daysLateAfterDueDate, effectiveDueDateForLateFees, lateFeesOnGross } from '../domain/finance'
+import {
+  currentEnrollmentCycle,
+  listStudentCycles,
+  mensalidadeCycle,
+  openParcelsInOtherCycles,
+} from '../domain/mensalidadeCycles'
 import { projectUnpaidMensalidade } from '../domain/mensalidadeProjection'
 import type { MensalidadeRegistrada } from '../domain/types'
 import { isStudentActiveEnrolled } from '../domain/studentStatus'
@@ -10,6 +16,7 @@ import { EditPaidMensalidadeModal } from '../components/EditPaidMensalidadeModal
 import { FormActions } from '../components/FormActions'
 import { PaymentMensalidadeModal } from '../components/PaymentMensalidadeModal'
 import { generateMensalidadeReceiptPdf } from '../utils/generateReceiptPdf'
+import { drawPdfHeader } from '../utils/pdfHeader'
 
 function addDaysIso(isoDate: string, days: number) {
   const d = new Date(isoDate + 'T12:00:00')
@@ -32,6 +39,7 @@ export function Financeiro() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [studentQuery, setStudentQuery] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [selectedCycle, setSelectedCycle] = useState(1)
   const [payModalRow, setPayModalRow] = useState<MensalidadeRegistrada | null>(null)
   const [editModalRow, setEditModalRow] = useState<MensalidadeRegistrada | null>(null)
 
@@ -80,10 +88,42 @@ export function Financeiro() {
     }
   }, [state.mensalidades, state.students, today])
 
+  const selectedStudent = useMemo(
+    () => studentsForFinance.find((s) => s.id === selectedStudentId) ?? null,
+    [studentsForFinance, selectedStudentId],
+  )
+
+  const currentCycle = useMemo(
+    () => currentEnrollmentCycle(selectedStudent, state.mensalidades),
+    [selectedStudent, state.mensalidades],
+  )
+
+  useEffect(() => {
+    if (selectedStudentId) setSelectedCycle(currentCycle)
+  }, [selectedStudentId, currentCycle])
+
+  const cycleOptions = useMemo(
+    () =>
+      selectedStudentId
+        ? listStudentCycles(state.mensalidades, selectedStudentId, currentCycle)
+        : [],
+    [state.mensalidades, selectedStudentId, currentCycle],
+  )
+
+  const pendingOtherCycles = useMemo(
+    () =>
+      selectedStudentId
+        ? openParcelsInOtherCycles(state.mensalidades, selectedStudentId, currentCycle)
+        : [],
+    [state.mensalidades, selectedStudentId, currentCycle],
+  )
+
+  const selectedCycleInfo = cycleOptions.find((c) => c.cycle === selectedCycle)
+
   const rows = useMemo(() => {
     if (!selectedStudentId) return []
     return state.mensalidades
-      .filter((m) => m.studentId === selectedStudentId)
+      .filter((m) => m.studentId === selectedStudentId && mensalidadeCycle(m) === selectedCycle)
       .sort((a, b) => a.parcelNumber - b.parcelNumber)
       .map((m) => {
         if (m.status === 'cancelado') {
@@ -130,9 +170,30 @@ export function Financeiro() {
           displayLiquid: proj.displayLiquid,
         }
       })
-  }, [state.mensalidades, selectedStudentId, paymentDate])
+  }, [state.mensalidades, selectedStudentId, selectedCycle, paymentDate])
 
-  const selectedStudent = studentsForFinance.find((s) => s.id === selectedStudentId)
+  const resumoExtrato = useMemo(() => {
+    let totalPago = 0
+    let totalAberto = 0
+    let qtdPago = 0
+    let qtdAberto = 0
+    let qtdCancelado = 0
+    for (const r of rows) {
+      if (r.m.status === 'cancelado') {
+        qtdCancelado++
+        continue
+      }
+      if (r.m.paidAt) {
+        totalPago += r.fees.total
+        qtdPago++
+      } else {
+        totalAberto += r.m.liquidAmount
+        qtdAberto++
+      }
+    }
+    return { totalPago, totalAberto, qtdPago, qtdAberto, qtdCancelado, qtdTotal: rows.length }
+  }, [rows])
+
   const quickRows = useMemo(() => {
     if (!quickFilter || quickFilter === 'active') return []
     const horizon = addDaysIso(today, 30)
@@ -269,6 +330,116 @@ export function Financeiro() {
       y += rowH
     }
     doc.save(`financeiro-${quickFilter}-${new Date().toISOString().slice(0, 10)}.pdf`)
+  }
+
+  const exportExtratoPdf = async () => {
+    if (!selectedStudent) return
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    let y = await drawPdfHeader(doc, 10)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.text('Extrato financeiro do aluno', pageW / 2, y + 1, { align: 'center' })
+    y += 7
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(`Aluno: ${selectedStudent.nome}  (${selectedStudent.codigo})`, 14, y)
+    y += 5
+    if (selectedCycleInfo) {
+      doc.text(
+        `Contrato: ${selectedCycleInfo.label}  ·  ${selectedCycleInfo.courseLabel}  ·  ${selectedCycleInfo.periodLabel}`,
+        14,
+        y,
+      )
+      y += 5
+    }
+    doc.setFontSize(8.5)
+    doc.text(
+      `Total pago: R$ ${resumoExtrato.totalPago.toFixed(2)}  ·  Em aberto: R$ ${resumoExtrato.totalAberto.toFixed(2)}  ·  Pagas: ${resumoExtrato.qtdPago}  ·  Em aberto: ${resumoExtrato.qtdAberto}  ·  Canceladas: ${resumoExtrato.qtdCancelado}`,
+      14,
+      y,
+    )
+    y += 4
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, 14, y)
+    y += 4
+
+    const x = 10
+    type ExtratoColumn = {
+      label: string
+      w: number
+      align: 'left' | 'center' | 'right'
+      get: (r: (typeof rows)[number]) => string
+    }
+    const columns: ExtratoColumn[] = [
+      { label: 'Parc.', w: 16, align: 'center', get: (r) => `${r.m.parcelNumber}/12` },
+      { label: 'Ref.', w: 22, align: 'center', get: (r) => r.m.referenceMonth },
+      { label: 'Venc.', w: 26, align: 'center', get: (r) => r.m.dueDate },
+      { label: 'Base', w: 26, align: 'right', get: (r) => `R$ ${r.m.baseAmount.toFixed(2)}` },
+      { label: 'Desc.%', w: 18, align: 'right', get: (r) => `${r.m.discountPercent}%` },
+      { label: 'Líquido', w: 28, align: 'right', get: (r) => `R$ ${r.displayLiquid.toFixed(2)}` },
+      { label: 'Multa', w: 24, align: 'right', get: (r) => `R$ ${r.fees.fine.toFixed(2)}` },
+      { label: 'Juros', w: 24, align: 'right', get: (r) => `R$ ${r.fees.interest.toFixed(2)}` },
+      {
+        label: 'Total',
+        w: 28,
+        align: 'right',
+        get: (r) => (r.m.status === 'cancelado' ? '—' : `R$ ${r.fees.total.toFixed(2)}`),
+      },
+      {
+        label: 'Situação',
+        w: 28,
+        align: 'center',
+        get: (r) => (r.m.status === 'cancelado' ? 'Cancelada' : r.m.paidAt ? 'Paga' : 'Pendente'),
+      },
+    ]
+    const tableW = columns.reduce((s, c) => s + c.w, 0)
+    const rowH = 7
+
+    const drawHeader = () => {
+      doc.setFillColor(236, 242, 255)
+      doc.rect(x, y, tableW, rowH, 'F')
+      doc.setDrawColor(170, 184, 214)
+      doc.rect(x, y, tableW, rowH)
+      let cx = x
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8.5)
+      for (const c of columns) {
+        const tx = c.align === 'left' ? cx + 1.5 : c.align === 'right' ? cx + c.w - 1.5 : cx + c.w / 2
+        doc.text(c.label, tx, y + 4.6, { align: c.align })
+        cx += c.w
+      }
+      y += rowH
+    }
+
+    drawHeader()
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+
+    for (const r of rows) {
+      if (y > pageH - 12) {
+        doc.addPage()
+        y = 12
+        drawHeader()
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+      }
+      doc.setDrawColor(220, 226, 240)
+      doc.rect(x, y, tableW, rowH)
+      let cx = x
+      for (const c of columns) {
+        const tx = c.align === 'left' ? cx + 1.5 : c.align === 'right' ? cx + c.w - 1.5 : cx + c.w / 2
+        doc.text(String(c.get(r)), tx, y + 4.6, { align: c.align })
+        cx += c.w
+      }
+      y += rowH
+    }
+
+    doc.save(
+      `extrato-${selectedStudent.codigo}-c${selectedCycle}-${new Date().toISOString().slice(0, 10)}.pdf`,
+    )
   }
 
   const finalizePayment = async (
@@ -617,6 +788,77 @@ export function Financeiro() {
         </p>
       ) : (
         <>
+        {pendingOtherCycles.length > 0 && selectedCycle === currentCycle && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-medium">
+              Este aluno tem {pendingOtherCycles.length} parcela(s) em aberto de contrato(s) anterior(es).
+            </p>
+            <p className="mt-1 text-amber-900/90">
+              Use o seletor de contrato abaixo para consultar ou quitar essas pendências.
+            </p>
+          </div>
+        )}
+
+        {cycleOptions.length > 1 && (
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="fin-ciclo">
+              Contrato
+            </label>
+            <select
+              id="fin-ciclo"
+              value={selectedCycle}
+              onChange={(e) => setSelectedCycle(Number(e.target.value))}
+              className="min-h-[42px] w-full max-w-lg rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#003366] focus:outline-none focus:ring-1 focus:ring-[#003366]"
+            >
+              {cycleOptions.map((c) => (
+                <option key={c.cycle} value={c.cycle}>
+                  {c.label}
+                  {c.openCount > 0 ? ` · ${c.openCount} em aberto` : ''}
+                </option>
+              ))}
+            </select>
+            {selectedCycleInfo && (
+              <p className="mt-2 text-xs text-slate-600">
+                {selectedCycleInfo.courseLabel}
+                {selectedCycleInfo.periodLabel ? ` · ${selectedCycleInfo.periodLabel}` : ''}
+              </p>
+            )}
+          </section>
+        )}
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2 text-sm">
+              <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-800">
+                Total pago: <strong className="tabular-nums">R$ {resumoExtrato.totalPago.toFixed(2)}</strong>{' '}
+                ({resumoExtrato.qtdPago})
+              </span>
+              <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-900">
+                Em aberto: <strong className="tabular-nums">R$ {resumoExtrato.totalAberto.toFixed(2)}</strong>{' '}
+                ({resumoExtrato.qtdAberto})
+              </span>
+              {resumoExtrato.qtdCancelado > 0 && (
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
+                  Canceladas: <strong className="tabular-nums">{resumoExtrato.qtdCancelado}</strong>
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={exportExtratoPdf}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#003366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#00264d]"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
+              </svg>
+              Exportar PDF do extrato
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Resumo das 12 parcelas do contrato selecionado. &quot;Total pago&quot; soma o valor efetivamente cobrado
+            (com multa/juros, quando houver); &quot;Em aberto&quot; soma o líquido das parcelas ainda não quitadas.
+          </p>
+        </section>
         <div className="space-y-3 md:hidden">
           {rows.length === 0 && (
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 shadow-sm">

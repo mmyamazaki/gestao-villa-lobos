@@ -25,7 +25,12 @@ function PaymentMensalidadeModalForm({
   paymentDate,
   onClose,
   onConfirm,
-}: Omit<Props, 'open'>) {
+}: {
+  m: MensalidadeRegistrada
+  paymentDate: string
+  onClose: () => void
+  onConfirm: Props['onConfirm']
+}) {
   const calcReferenceForDate = (dateIso: string) => {
     if (m.waivesLateFees) {
       return {

@@ -378,7 +378,11 @@ function replaceMensalidadesForStudent(state: SchoolState, student: Student): Sc
   if (!course) {
     return { ...state, mensalidades: withoutStudent }
   }
-  const oldRows = state.mensalidades.filter((m) => m.studentId === student.id)
+  // Ciclo de contrato alvo: só este ciclo é regenerado; os demais (rematrículas anteriores) ficam intactos.
+  const targetCycle = en.cycle ?? 1
+  const studentRows = state.mensalidades.filter((m) => m.studentId === student.id)
+  const otherCycleRows = studentRows.filter((m) => (m.cycle ?? 1) !== targetCycle)
+  const oldRows = studentRows.filter((m) => (m.cycle ?? 1) === targetCycle)
   const oldByParcel = new Map(oldRows.map((m) => [m.parcelNumber, m]))
   const generatedAt = new Date().toISOString()
   let merged: MensalidadeRegistrada[] = buildTwelveMensalidades(
@@ -386,6 +390,7 @@ function replaceMensalidadesForStudent(state: SchoolState, student: Student): Sc
     course,
     en,
     generatedAt,
+    targetCycle,
   ).map((r) => {
     const o = oldByParcel.get(r.parcelNumber)
     if (o?.paidAt) {
@@ -434,7 +439,7 @@ function replaceMensalidadesForStudent(state: SchoolState, student: Student): Sc
     })
   }
 
-  return { ...state, mensalidades: [...withoutStudent, ...merged] }
+  return { ...state, mensalidades: [...withoutStudent, ...otherCycleRows, ...merged] }
 }
 
 function resyncStudentsAfterTeacherSave(

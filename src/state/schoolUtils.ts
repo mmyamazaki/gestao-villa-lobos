@@ -19,13 +19,14 @@ export function mergeMensalidadesFromServer(
   if (server.length === 0) return local
 
   const serverById = new Map(server.map((x) => [x.id, x]))
-  const serverStudentParcelToId = new Map(
-    server.map((x) => [`${x.studentId}|${x.parcelNumber}`, x.id] as const),
+  // Chave inclui o ciclo: parcelas de contratos diferentes (rematrícula) repetem o nº da parcela.
+  const serverStudentParcelToId = new Map<string, string>(
+    server.map((x) => [`${x.studentId}|${x.cycle ?? 1}|${x.parcelNumber}`, x.id] as const),
   )
 
-  /** Remove parcelas locais “fantasma” (mesmo aluno/nº, id antigo) quando o servidor já tem a linha canónica. */
+  /** Remove parcelas locais “fantasma” (mesmo aluno/ciclo/nº, id antigo) quando o servidor já tem a linha canónica. */
   const localFiltered = local.filter((l) => {
-    const k = `${l.studentId}|${l.parcelNumber}`
+    const k = `${l.studentId}|${l.cycle ?? 1}|${l.parcelNumber}`
     const serverId = serverStudentParcelToId.get(k)
     if (serverId == null) return true
     return serverId === l.id

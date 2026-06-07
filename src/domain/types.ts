@@ -73,6 +73,11 @@ export interface Enrollment {
   /** Dia de vencimento das parcelas 2..12 (1..31). Contrato pode manter texto padrão. */
   dueDay?: number
   matriculatedAt: string
+  /**
+   * Ciclo de contrato (rematrícula). 1 = primeiro contrato. Cada rematrícula incrementa o ciclo,
+   * gerando um novo conjunto de 12 parcelas sem apagar as anteriores. Ausente = ciclo 1 (dados legados).
+   */
+  cycle?: number
 }
 
 export type StudentStatus = 'ativo' | 'inativo'
@@ -115,6 +120,8 @@ export interface MensalidadeRegistrada {
   studentNome: string
   courseId: string
   courseLabel: string
+  /** Ciclo de contrato a que a parcela pertence (rematrícula). 1 = primeiro contrato. */
+  cycle: number
   /** 1 a 12 */
   parcelNumber: number
   /** Mês de referência YYYY-MM */

@@ -25,12 +25,14 @@ export function mapSupabaseRowToMensalidade(row: Record<string, unknown>): Mensa
   const disc = dp === 5 || dp === 10 ? dp : 0
   const paid =
     typeof row.paidAt === 'string' && row.paidAt.length >= 8 ? row.paidAt.slice(0, 10) : undefined
+  const cycleNum = Number(row.cycle)
   return {
     id: String(row.id ?? ''),
     studentId: String(row.studentId ?? ''),
     studentNome: String(row.studentNome ?? ''),
     courseId: String(row.courseId ?? ''),
     courseLabel: String(row.courseLabel ?? ''),
+    cycle: Number.isFinite(cycleNum) && cycleNum >= 1 ? Math.trunc(cycleNum) : 1,
     parcelNumber: typeof row.parcelNumber === 'number' ? row.parcelNumber : Number(row.parcelNumber) || 1,
     referenceMonth: String(row.referenceMonth ?? ''),
     dueDate: String(row.dueDate ?? '').slice(0, 10),
@@ -54,6 +56,7 @@ export function mensalidadeToSupabaseRow(m: MensalidadeRegistrada): Record<strin
     studentNome: m.studentNome ?? '',
     courseId: m.courseId,
     courseLabel: m.courseLabel ?? '',
+    cycle: typeof m.cycle === 'number' && m.cycle >= 1 ? Math.trunc(m.cycle) : 1,
     parcelNumber: m.parcelNumber,
     referenceMonth: m.referenceMonth ?? '',
     dueDate: m.dueDate ?? '',

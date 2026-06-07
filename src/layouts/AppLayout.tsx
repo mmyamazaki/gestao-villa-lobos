@@ -10,6 +10,7 @@ const nav: { to: string; label: string; end?: boolean }[] = [
   { to: '/professores', label: 'Professores' },
   { to: '/financeiro', label: 'Financeiro' },
   { to: '/calendario', label: 'Calendário' },
+  { to: '/relatorios', label: 'Relatórios' },
   { to: '/configuracoes', label: 'Configurações' },
 ]
 

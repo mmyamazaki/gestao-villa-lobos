@@ -1,7 +1,13 @@
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { isStudent, useAuth } from '../../auth/AuthContext'
+import {
+  currentEnrollmentCycle,
+  listStudentCycles,
+  mensalidadeCycle,
+  openParcelsInOtherCycles,
+} from '../../domain/mensalidadeCycles'
 import {
   formatSixtyMinuteLessonLabel,
   formatSlotKeyLabel,
@@ -28,14 +34,37 @@ export function AlunoPainel() {
 
   const refDate = useMemo(() => new Date(), [])
 
+  const currentCycle = useMemo(
+    () => currentEnrollmentCycle(student, state.mensalidades),
+    [student, state.mensalidades],
+  )
+
+  const cycleOptions = useMemo(
+    () => (studentId ? listStudentCycles(state.mensalidades, studentId, currentCycle) : []),
+    [state.mensalidades, studentId, currentCycle],
+  )
+
+  const [selectedCycle, setSelectedCycle] = useState<number>(1)
+
+  useEffect(() => {
+    setSelectedCycle(currentCycle)
+  }, [studentId, currentCycle])
+
+  const pendingOtherCycles = useMemo(
+    () => (studentId ? openParcelsInOtherCycles(state.mensalidades, studentId, currentCycle) : []),
+    [state.mensalidades, studentId, currentCycle],
+  )
+
+  const selectedCycleInfo = cycleOptions.find((c) => c.cycle === selectedCycle)
+
   const financeRows = useMemo(() => {
     if (!studentId) return []
     const now = new Date()
     return state.mensalidades
-      .filter((m) => m.studentId === studentId)
+      .filter((m) => m.studentId === studentId && mensalidadeCycle(m) === selectedCycle)
       .map((m) => computeStudentParcelView(m, now))
-      .sort((a, b) => a.m.referenceMonth.localeCompare(b.m.referenceMonth))
-  }, [state.mensalidades, studentId])
+      .sort((a, b) => a.m.parcelNumber - b.m.parcelNumber)
+  }, [state.mensalidades, studentId, selectedCycle])
 
   const logsDesc = useMemo(() => {
     return [...state.lessonLogs].filter((l) => l.studentId === studentId).sort((a, b) => {
@@ -241,7 +270,47 @@ export function AlunoPainel() {
       )}
 
       {tab === 'financeiro' && (
-        <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section className="space-y-3">
+          {pendingOtherCycles.length > 0 && selectedCycle === currentCycle && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-medium">
+                Você tem {pendingOtherCycles.length} parcela(s) em aberto de contrato(s) anterior(es).
+              </p>
+              <p className="mt-1 text-amber-900/90">
+                Use o seletor abaixo para ver os detalhes. Essas pendências permanecem mesmo após a
+                rematrícula.
+              </p>
+            </div>
+          )}
+
+          {cycleOptions.length > 1 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="aluno-ciclo">
+                Contrato
+              </label>
+              <select
+                id="aluno-ciclo"
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(Number(e.target.value))}
+                className="min-h-[42px] w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#003366] focus:outline-none focus:ring-1 focus:ring-[#003366]"
+              >
+                {cycleOptions.map((c) => (
+                  <option key={c.cycle} value={c.cycle}>
+                    {c.label}
+                    {c.openCount > 0 ? ` · ${c.openCount} em aberto` : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedCycleInfo && (
+                <p className="mt-2 text-xs text-slate-600">
+                  {selectedCycleInfo.courseLabel}
+                  {selectedCycleInfo.periodLabel ? ` · ${selectedCycleInfo.periodLabel}` : ''}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[920px] w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
               <tr>
@@ -304,6 +373,7 @@ export function AlunoPainel() {
             Após o vencimento, o desconto deixa de valer; multa e juros incidem sobre o valor bruto. 1ª parcela: sem
             multa/juros no sistema.
           </p>
+          </div>
         </section>
       )}
     </div>

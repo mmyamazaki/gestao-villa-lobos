@@ -207,6 +207,7 @@ export function mensalidadeToPrismaUnchecked(
     studentNome: m.studentNome ?? '',
     courseId: m.courseId,
     courseLabel: m.courseLabel ?? '',
+    cycle: typeof m.cycle === 'number' && Number.isFinite(m.cycle) ? Math.trunc(m.cycle) : 1,
     parcelNumber: m.parcelNumber,
     referenceMonth: m.referenceMonth ?? '',
     dueDate: m.dueDate ?? '',
@@ -235,6 +236,7 @@ export function mensalidadeFromPrisma(row: {
   studentNome: string
   courseId: string
   courseLabel: string
+  cycle?: number | null
   parcelNumber: number
   referenceMonth: string
   dueDate: string
@@ -261,6 +263,7 @@ export function mensalidadeFromPrisma(row: {
     studentNome: row.studentNome,
     courseId: row.courseId,
     courseLabel: row.courseLabel,
+    cycle: typeof row.cycle === 'number' && Number.isFinite(row.cycle) ? row.cycle : 1,
     parcelNumber: row.parcelNumber,
     referenceMonth: row.referenceMonth,
     dueDate: row.dueDate,

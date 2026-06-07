@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { calcAgeYears, normalizeBirthToIso } from '../domain/age'
 import {
   DAY_LABELS,
@@ -119,11 +119,29 @@ function derive30DropdownsFromKeys(keys: string[]): {
 
 export function Matricula() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const school = useSchool()
 
+  const isRematricula = id !== 'novo' && searchParams.get('rematricula') === '1'
+
   const [novoStudentId] = useState(() => crypto.randomUUID())
   const [novoCodigo] = useState(() => generateStudentCode())
+
+  const existing = useMemo(
+    () => (id && id !== 'novo' ? school.state.students.find((s) => s.id === id) ?? null : null),
+    [id, school.state.students],
+  )
+
+  /** Próximo ciclo de contrato = maior ciclo já existente do aluno + 1 (rematrícula). */
+  const rematriculaCycle = useMemo(() => {
+    if (!isRematricula || !existing) return 1
+    const cycles = school.state.mensalidades
+      .filter((m) => m.studentId === existing.id)
+      .map((m) => m.cycle ?? 1)
+    const maxCycle = cycles.length ? Math.max(...cycles) : existing.enrollment?.cycle ?? 1
+    return maxCycle + 1
+  }, [isRematricula, existing, school.state.mensalidades])
 
   const baseline = useMemo((): Student | null => {
     if (id == null || id === '') return null
@@ -146,15 +164,29 @@ export function Matricula() {
         enrollment: null,
       }
     }
-    return school.state.students.find((s) => s.id === id) ?? null
-  }, [id, novoStudentId, novoCodigo, school.state.students])
+    if (!existing) return null
+    if (isRematricula) {
+      // Reaproveita o cadastro; zera a parte da matrícula para escolher o novo curso/horários.
+      // Reativa o aluno (novo contrato), sem apagar parcelas de ciclos anteriores.
+      return {
+        ...existing,
+        status: 'ativo',
+        dataCancelamento: undefined,
+        observacoesCancelamento: undefined,
+        enrollment: null,
+      }
+    }
+    return existing
+  }, [id, novoStudentId, novoCodigo, existing, isRematricula])
 
   if (!baseline) return <Navigate to="/alunos" replace />
 
   return (
     <MatriculaInner
-      key={id === 'novo' ? novoStudentId : baseline.id}
+      key={id === 'novo' ? novoStudentId : `${baseline.id}${isRematricula ? '-re' : ''}`}
       mode={id === 'novo' ? 'novo' : 'edit'}
+      rematricula={isRematricula}
+      rematriculaCycle={rematriculaCycle}
       baseline={baseline}
       school={school}
       onCancelNavigate={() => navigate('/alunos')}
@@ -165,12 +197,16 @@ export function Matricula() {
 
 function MatriculaInner({
   mode,
+  rematricula,
+  rematriculaCycle,
   baseline,
   school,
   onCancelNavigate,
   onDone,
 }: {
   mode: 'novo' | 'edit'
+  rematricula: boolean
+  rematriculaCycle: number
   baseline: Student
   school: SchoolContextValue
   onCancelNavigate: () => void
@@ -184,7 +220,7 @@ function MatriculaInner({
    * O PDF só é permitido quando `draft` é igual a isto — evita contrato local sem registo na base.
    */
   const [lastPersistedJson, setLastPersistedJson] = useState<string | null>(() =>
-    mode === 'edit' ? JSON.stringify(baseline) : null,
+    mode === 'edit' && !rematricula ? JSON.stringify(baseline) : null,
   )
   const savedToServer =
     lastPersistedJson != null && JSON.stringify(draft) === lastPersistedJson
@@ -521,6 +557,8 @@ function MatriculaInner({
       slotKeys: sortSlotKeys(selectedKeys),
       dueDay,
       matriculatedAt: mat,
+      // Rematrícula: carimba o novo ciclo; assim a regeneração cria 12 parcelas novas sem tocar nas antigas.
+      ...(rematricula ? { cycle: rematriculaCycle } : {}),
     }
   }
 
@@ -653,7 +691,7 @@ function MatriculaInner({
       )}
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-          {mode === 'novo' ? 'Nova matrícula' : 'Editar matrícula'}
+          {rematricula ? 'Rematrícula' : mode === 'novo' ? 'Nova matrícula' : 'Editar matrícula'}
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           Fluxo: Curso → Professor disponível → Modalidade de aula → Horários. Integração automática com a
@@ -661,7 +699,23 @@ function MatriculaInner({
         </p>
       </div>
 
-      {mode === 'edit' && studentNeedsTeacherReassignment(draft, state.teachers) && (
+      {rematricula && (
+        <div
+          className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+          role="status"
+        >
+          <p className="font-medium">
+            Rematrícula de {baseline.nome} · código {baseline.codigo} · contrato {rematriculaCycle}º
+          </p>
+          <p className="mt-1 text-sky-900/95">
+            Os dados cadastrais foram reaproveitados (ajuste telefone/endereço se necessário). Escolha o
+            novo curso, professor, modalidade, horários e data da matrícula. Ao salvar, serão geradas 12
+            parcelas novas para este contrato, sem alterar os contratos anteriores.
+          </p>
+        </div>
+      )}
+
+      {mode === 'edit' && !rematricula && studentNeedsTeacherReassignment(draft, state.teachers) && (
         <div
           className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
           role="status"

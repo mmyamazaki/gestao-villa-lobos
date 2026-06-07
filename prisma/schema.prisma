@@ -68,6 +68,8 @@ model Mensalidade {
   studentNome     String
   courseId        String
   courseLabel     String
+  /** Ciclo de contrato (rematrícula). 1 = primeiro contrato; cada rematrícula incrementa. */
+  cycle           Int      @default(1)
   parcelNumber    Int
   referenceMonth  String
   dueDate         String
