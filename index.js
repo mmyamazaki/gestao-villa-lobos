@@ -1,20 +1,15 @@
 import 'dotenv/config'
-import { setTimeout as sleep } from 'node:timers/promises'
-import { acquireSingletonLock } from './scripts/singleton-lock.mjs'
 
 console.log('[boot] index.js carregado')
 
+/**
+ * Sem lock de instância única: o LiteSpeed/LSAPI da Hostinger gere os processos e o `app.listen()`
+ * é interceptado para o socket de cada vhost. O lock antigo prendia a app ao socket do domínio
+ * temporário e matava os workers do domínio real → 503 + relançamento contínuo (Max Processes).
+ * Deixamos a plataforma gerir os workers; vários processos por vhost é o comportamento esperado.
+ */
 ;(async () => {
   try {
-    if (!(await acquireSingletonLock())) {
-      /**
-       * Pausa antes de sair: a saída instantânea de uma cópia que perdeu o lock pode ser lida
-       * pelo supervisor da Hostinger como "processo arrancou e morreu" → relança em rajada →
-       * Max Processes. A espera trava o ciclo apertado de respawn enquanto a instância dona serve.
-       */
-      await sleep(2000)
-      process.exit(0)
-    }
     await import('./scripts/start-production.mjs')
     console.log('[boot] start-production.mjs carregado')
   } catch (err) {
