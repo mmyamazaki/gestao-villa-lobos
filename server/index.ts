@@ -1429,64 +1429,64 @@ function logDatabaseUrlTargetSummary(): void {
   }
 }
 
+/** Evita várias rotinas de reconexão em paralelo no mesmo worker. */
+let prismaReconnectInProgress = false
+
 /**
- * Vários arranques em paralelo (Hostinger) → PANIC `timer has gone away`. O cliente Prisma
- * fica inutilizável após PANIC: recriamos o engine entre tentativas e usamos jitter em produção.
+ * Mantém a ligação ao Postgres **auto-recuperável**: tenta em loop (backoff + jitter) até ligar.
+ *
+ * Sem o lock de instância única, o LSAPI da Hostinger pode ter **vários workers** a ligar ao mesmo
+ * tempo → PANIC `timer has gone away` ou corrida no pooler. Antes, um worker que falhasse ficava
+ * **'failed' para sempre** e servia 503 — agora cada worker volta a tentar até ficar 'ready'.
  */
-async function connectPrismaWithRetries(): Promise<void> {
+async function maintainPrismaConnection(): Promise<void> {
+  if (prismaReconnectInProgress) return
+  prismaReconnectInProgress = true
+
   logDatabaseUrlTargetSummary()
 
-  /** Jitter curto em produção para desincronizar vários arranques paralelos no painel. */
+  /** Jitter inicial em produção para desincronizar vários workers a ligar em simultâneo. */
   if (process.env.NODE_ENV === 'production') {
-    const jitter = 40 + Math.floor(Math.random() * 120)
-    console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar arranques).`)
+    const jitter = 50 + Math.floor(Math.random() * 250)
+    console.log(`[api] Prisma: jitter inicial ${jitter}ms (desincronizar workers).`)
     await sleep(jitter)
   }
 
-  console.log(
-    '[api] Prisma: a iniciar $connect() ao Postgres (se ficar sem linhas aqui em seguida, a ligação TCP/SSL pode estar pendurada até connect_timeout na URL, ex. 60s).',
-  )
+  console.log('[api] Prisma: a iniciar $connect() ao Postgres…')
 
-  /**
-   * Menos tentativas e backoff maior: cada recriação do engine após PANIC abre um subprocesso
-   * Prisma; muitas tentativas rápidas inflavam o número de processos (Hostinger: Max Processes).
-   */
-  const max = 4
-  /** Limite de recriações do engine por arranque — evita rajada de subprocessos do engine. */
-  const maxEngineRecreations = 2
+  /** Limite de recriações do engine após PANIC — cada recriação abre subprocesso. */
+  const maxEngineRecreations = 3
   let engineRecreations = 0
-  for (let i = 0; i < max; i++) {
+
+  for (let attempt = 1; ; attempt++) {
     try {
       const t0 = Date.now()
-      console.log(`[api] Prisma: $connect() tentativa ${i + 1}/${max}…`)
       await prisma.$connect()
-      const ms = Date.now() - t0
-      if (i > 0) {
-        console.log(`[api] Prisma ligado ao Postgres após ${i + 1} tentativa(s) (${ms}ms nesta tentativa).`)
-      } else {
-        console.log(`[api] Prisma ligado ao Postgres (${ms}ms).`)
-      }
+      prismaConnectionState = 'ready'
+      prismaConnectionError = null
+      prismaGateFailureLogged = false
+      console.log(`[api] Prisma ligado ao Postgres (tentativa ${attempt}, ${Date.now() - t0}ms).`)
+      prismaReconnectInProgress = false
       return
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       const panic = /PANIC|timer has gone away/i.test(msg)
-      if (i < max - 1) {
-        if (panic && hasDatabaseUrlConfigured() && engineRecreations < maxEngineRecreations) {
-          engineRecreations++
-          await replacePrismaClientAfterEnginePanic()
-        }
-        const wait = panic ? 1500 + i * 1000 : 800 + i * 400
-        console.warn(
-          `[api] Prisma $connect tentativa ${i + 1}/${max} falhou${panic ? ' (PANIC)' : ''}; a aguardar ${wait}ms…`,
-        )
-        await sleep(wait)
-        continue
+      /** Não marca 'failed' permanente: mantém 'connecting' e continua a tentar (auto-recuperável). */
+      prismaConnectionState = 'connecting'
+      prismaConnectionError = e instanceof Error ? e : new Error(String(e))
+      if (panic && hasDatabaseUrlConfigured() && engineRecreations < maxEngineRecreations) {
+        engineRecreations++
+        await replacePrismaClientAfterEnginePanic()
       }
-      console.error('[api] Prisma $connect falhou — verifique DATABASE_URL no painel.', e)
-      throw e instanceof Error ? e : new Error(String(e))
+      /** Backoff progressivo com teto de 15s + jitter (não martelar o pooler com vários workers). */
+      const base = Math.min(15_000, 800 + attempt * 1200)
+      const wait = base + Math.floor(Math.random() * 400)
+      console.warn(
+        `[api] Prisma $connect tentativa ${attempt} falhou${panic ? ' (PANIC)' : ''}: ${msg.slice(0, 120)}; a repetir em ${wait}ms…`,
+      )
+      await sleep(wait)
     }
   }
-  throw new Error('Prisma: ligação falhou após retentativas')
 }
 
 /**
@@ -1515,19 +1515,8 @@ export async function start(): Promise<void> {
     prismaConnectionState = 'connecting'
     prismaConnectionError = null
     prismaGateFailureLogged = false
-    prismaBootstrapPromise = connectPrismaWithRetries()
-      .then(() => {
-        prismaConnectionState = 'ready'
-        prismaConnectionError = null
-      })
-      .catch((e: unknown) => {
-        prismaConnectionState = 'failed'
-        prismaConnectionError = e instanceof Error ? e : new Error(String(e))
-        console.error(
-          '[api] Prisma: ligação em background falhou (HTTP ativo; rotas /api bloqueadas).',
-          prismaConnectionError,
-        )
-      })
+    /** Loop auto-recuperável: nunca rejeita; mantém o worker a tentar até ligar. */
+    prismaBootstrapPromise = maintainPrismaConnection()
   } else {
     prismaConnectionState = 'ready'
     prismaBootstrapPromise = Promise.resolve()
